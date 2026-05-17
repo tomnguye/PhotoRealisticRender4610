@@ -29,7 +29,7 @@ void Renderer::Render(const Scene &scene) {
 
     float progress = 0.0f;
 
-#pragma omp parallel for collapse(2) num_threads(8) // use multi-threading for speedup if openmp is available
+#pragma omp parallel for num_threads(8) // use multi-threading for speedup if openmp is available
     for (uint32_t j = 0; j < scene.height; ++j) {
         for (uint32_t i = 0; i < scene.width; ++i) {
 
@@ -74,9 +74,9 @@ void Renderer::Render(const Scene &scene) {
 
                 framebuffer[m] = color / samples;
             }
-            progress += 1.0f / ((float)scene.height * (float)scene.width);
-            UpdateProgress(progress);
         }
+        progress += 1.0f / (float)scene.height;
+        UpdateProgress(progress);
     }
     UpdateProgress(1.f);
 
