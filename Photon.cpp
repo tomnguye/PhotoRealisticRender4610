@@ -1,4 +1,9 @@
 #include "Photon.hpp"
+#include "Scene.hpp"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 Vector3f PhotonGrid::worldToCell(Vector3f pos) const {
     return Vector3f(
@@ -53,59 +58,44 @@ void PhotonGrid::build(std::vector<Photon>& photons, float radius) {
     }
 }
 
-std::vector<Photon> PhotonGrid::query(Vector3f pos, float radius) const {
-    std::vector<Photon> result;
+void PhotonGrid::query(Vector3f pos, float radius, std::vector<const Photon*>& result) const {
+    result.clear();
     
-    // find cell range to search
     int cx_min = (int)((pos.x - radius - bounds_min.x) / cell_size.x);
     int cy_min = (int)((pos.y - radius - bounds_min.y) / cell_size.y);
     int cz_min = (int)((pos.z - radius - bounds_min.z) / cell_size.z);
-    
     int cx_max = (int)((pos.x + radius - bounds_min.x) / cell_size.x);
     int cy_max = (int)((pos.y + radius - bounds_min.y) / cell_size.y);
     int cz_max = (int)((pos.z + radius - bounds_min.z) / cell_size.z);
-    
-    // clamp to grid bounds
+
     cx_min = std::max(0, cx_min); cx_max = std::min(resolution-1, cx_max);
     cy_min = std::max(0, cy_min); cy_max = std::min(resolution-1, cy_max);
     cz_min = std::max(0, cz_min); cz_max = std::min(resolution-1, cz_max);
-    
-    // collect all photons in range
+
     for (int cx = cx_min; cx <= cx_max; cx++)
     for (int cy = cy_min; cy <= cy_max; cy++)
     for (int cz = cz_min; cz <= cz_max; cz++) {
-        int idx = cellToIndex(cx, cy, cz);
-        auto it = cells.find(idx);
-        if (it != cells.end()) {
-            for (auto& p : it->second) {
-                float dist = (p.position - pos).norm();
-                if (dist <= radius)
-                    result.push_back(p);
-            }
-        }
+        auto it = cells.find(cellToIndex(cx, cy, cz));
+        if (it != cells.end())
+            for (auto& p : it->second)
+                if ((p.position - pos).norm() <= radius)
+                    result.push_back(&p);
     }
-    
-    return result;
 }
-
-
-Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal, float initial_radius) const
+Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const
 {
     const int targetPhotons = 8;
+    thread_local std::vector<const Photon*> nearby;
     
-    // initial query
-    auto nearby = caustic_grid.query(pos, initial_radius);
-    float radius = initial_radius;
+    caustic_grid.query(pos, photon_radius, nearby);
+    float radius = photon_radius;
 
-    // if not enough, predict radius needed based on photon density
     if ((int)nearby.size() < targetPhotons && !nearby.empty()) {
-        // density = photons / area
-        // to get targetPhotons we need area = targetPhotons / density
-        // radius = sqrt(targetPhotons / density / pi)
-        float density = nearby.size() / (M_PI * initial_radius * initial_radius);
-        float predicted_radius = std::sqrt(targetPhotons / (density * M_PI));
-        predicted_radius = std::min(predicted_radius, initial_radius * 8.0f); // cap growth
-        nearby = caustic_grid.query(pos, predicted_radius);
+        float density        = nearby.size() / (M_PI * photon_radius * photon_radius);
+        float predicted_radius = std::min(
+            std::sqrt(targetPhotons / (density * M_PI)),
+            photon_radius * 8.0f);
+        caustic_grid.query(pos, predicted_radius, nearby);
         radius = predicted_radius;
     } else if (nearby.empty()) {
         return {};
@@ -118,9 +108,9 @@ Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal, float init
 
     Vector3f irradiance = {};
     for (auto& p : nearby) {
-        float cos_theta = dotProduct(-p.direction, normal);
+        float cos_theta = dotProduct(-p->direction, normal);
         if (cos_theta > 0)
-            irradiance += p.power * cos_theta;
+            irradiance += p->power * cos_theta;
     }
     return irradiance / area;
 }
@@ -206,4 +196,9 @@ void PhotonMap::emit(int num_photons, const Scene& scene)
     caustic_map.reserve(total);
     for (auto& v : thread_caustic)
         caustic_map.insert(caustic_map.end(), v.begin(), v.end());
+}
+
+void PhotonMap::build()
+{
+    caustic_grid.build(caustic_map, photon_radius);
 }

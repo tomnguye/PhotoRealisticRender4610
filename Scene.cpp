@@ -9,6 +9,14 @@
 //  Scene setup
 // ─────────────────────────────────────────────
 
+void Scene::buildPhotonMaps(int num_photons)
+    {
+        printf("emitting photons\n");
+        photon_map.emit(num_photons, *this);
+        printf("building caustic grid\n");
+        photon_map.build();
+    }
+    
 void Scene::buildBVH()
 {
     printf(" - Generating BVH...\n\n");
@@ -105,8 +113,8 @@ Vector3f Scene::shadeDiffuse(const Ray& ray, const Intersection& inter, int dept
 
     // --- caustics ---
     Vector3f caustic = {};
-    if (!caustic_map.empty())
-        caustic = estimateIrradiance(inter.coords, inter.normal, caustic_grid, photon_radius)
+    if (!photon_map.caustic_map.empty())
+        caustic = photon_map.estimateIrradiance(inter.coords, inter.normal)
                   * color / M_PI;
 
     return direct + indirect + caustic;

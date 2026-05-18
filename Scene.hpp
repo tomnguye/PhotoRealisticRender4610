@@ -44,32 +44,11 @@ public:
     Vector3f castRay(const Ray &ray, int depth) const;
     void sampleLight(Intersection &pos, float &pdf) const;
     bool trace(const Ray &ray, const std::vector<Object*> &objects, float &tNear, uint32_t &index, Object **hitObject);
-    std::vector<Photon> caustic_map;
-    std::vector<Photon> global_map;
-    void emitPhotons(int num_photons);
-    void tracePhoton(Photon p, int depth);
-    void tracePhotonThread(Photon p, int depth, std::vector<Photon>& t_caustic);
-    PhotonGrid global_grid;
-    PhotonGrid caustic_grid;
-    void buildPhotonMaps(int num_photons) {
-        printf("emitting photons");
-        std::cout.flush();
-        emitPhotons(num_photons);
-        // printf("building global grid");
-        // std::cout.flush();
-        // global_grid.build(global_map, photon_radius);
-        printf("building caustic grid");
-        std::cout.flush();
-        caustic_grid.build(caustic_map, photon_radius);
-    }
-    Vector3f estimateIrradiance(Vector3f pos, Vector3f normal, const PhotonGrid& grid, float radius) const;
-    float photon_radius = 0.2f;
+    PhotonMap photon_map;
+    void buildPhotonMaps(int num_photons);
     Vector3f shadeDiffuse(const Ray& ray, const Intersection& inter, int depth) const;
     Vector3f shadeGlass(const Ray& ray, const Intersection& inter, int depth) const;
     Vector3f shadeMirror(const Ray& ray, const Intersection& inter, int depth) const;
-    Vector3f Indirect(const Vector3f& color, const Ray& ray, const Intersection& inter, int depth) const;
-    Vector3f Direct(const Vector3f& color, const Ray& ray, const Intersection& inter) const;
-    Vector3f Caustic(const Vector3f& color, const Intersection& inter) const;
     // creating the scene (adding objects and lights)
     std::vector<Object* > objects;
 
