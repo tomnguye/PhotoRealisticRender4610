@@ -2,6 +2,7 @@
 #ifndef PHOTON_H
 #define PHOTON_H
 
+#include "Scene.hpp"
 #include "Vector.hpp"
 #include <vector>
 #include <unordered_map>
@@ -29,5 +30,18 @@ struct PhotonGrid {
     std::vector<Photon> query(Vector3f pos, float radius) const;
 };
 
+class PhotonMap {
+public:
+    std::vector<Photon> caustic_map;
+    PhotonGrid          caustic_grid;
+    float               photon_radius;
+
+    void emit(int num_photons, const Scene& scene);
+    void build();
+    Vector3f estimateIrradiance(Vector3f pos, Vector3f normal, float initial_radius) const;
+
+private:
+    void trace(Photon p, int depth, std::vector<Photon>& t_caustic, const Scene& scene);
+};
 
 #endif
