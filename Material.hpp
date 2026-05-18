@@ -1,195 +1,255 @@
-//
-// Created by LEI XU on 5/16/19.
-//
+#pragma once
 
-#ifndef RAYTRACING_MATERIAL_H
-#define RAYTRACING_MATERIAL_H
-
+#include "BRDFTypes.hpp"
+#include "BRDFUtils.hpp"
+#include "Texture.hpp"
+#include "TextureUtils.hpp"
 #include "Vector.hpp"
+#include "global.hpp"
 
-enum MaterialType { DIFFUSE, GLASS, MIRROR, EMIT};
+// ─── Material types ───────────────────────────────────────────────────────────
 
-class Material{
-private:
+enum MaterialType { DIFFUSE, GLASS, MIRROR, EMIT };
 
+// ─── Material ─────────────────────────────────────────────────────────────────
+//
+// Owns PBR parameters and texture data for one glTF primitive.
+//
+// Responsibilities:
+//   - Store raw material parameters (baseColor, roughness, metallic, emission)
+//   - Store texture data (via Texture structs)
+//   - Expose buildShadingData() to resolve all textures into a ShadingData
+//   - Expose eval / sample / pdf which take ShadingData — pure math, no texture
+//     lookups inside
+//
+// What Material does NOT do:
+//   - Texture sampling inside eval/sample/pdf (done at hit time via buildShadingData)
+//   - Store raw byte arrays directly (delegated to Texture)
+//   - Apply normal maps (buildShadingData handles TBN transform)
 
-
-// Compute reflection direction
-    Vector3f reflect(const Vector3f &I, const Vector3f &N) const
-    {
-        return I - 2 * dotProduct(I, N) * N;
-    }
-
-    // Compute refraction direction using Snell's law
-    //
-    // We need to handle with care the two possible situations:
-    //
-    //    - When the ray is inside the object
-    //
-    //    - When the ray is outside.
-    //
-    // If the ray is outside, you need to make cosi positive cosi = -N.I
-    //
-    // If the ray is inside, you need to invert the refractive indices and negate the normal N
-    Vector3f refract(const Vector3f &I, const Vector3f &N, const float &ior) const
-    {
-        float cosi = clamp(-1, 1, dotProduct(I, N));
-        float etai = 1, etat = ior;
-        Vector3f n = N;
-        if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -N; }
-        float eta = etai / etat;
-        float k = 1 - eta * eta * (1 - cosi * cosi);
-        return k < 0 ? 0 : eta * I + (eta * cosi - sqrtf(k)) * n;
-    }
-
-    // Compute Fresnel equation
-    //
-    // \param I is the incident view direction
-    //
-    // \param N is the normal at the intersection point
-    //
-    // \param ior is the material refractive index
-    //
-    // \param[out] kr is the amount of light reflected
-    void fresnel(const Vector3f &I, const Vector3f &N, const float &ior, float &kr) const
-    {
-        float cosi = clamp(-1, 1, dotProduct(I, N));
-        float etai = 1, etat = ior;
-        if (cosi > 0) {  std::swap(etai, etat); }
-        // Compute sini using Snell's law
-        float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi));
-        // Total internal reflection
-        if (sint >= 1) {
-            kr = 1;
-        }
-        else {
-            float cost = sqrtf(std::max(0.f, 1 - sint * sint));
-            cosi = fabsf(cosi);
-            float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
-            float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
-            kr = (Rs * Rs + Rp * Rp) / 2;
-        }
-        // As a consequence of the conservation of energy, transmittance is given by:
-        // kt = 1 - kr;
-    }
-
-    Vector3f toWorld(const Vector3f &a, const Vector3f &N){
-        Vector3f B, C;
-        if (std::fabs(N.x) > std::fabs(N.y)){
-            float invLen = 1.0f / std::sqrt(N.x * N.x + N.z * N.z);
-            C = Vector3f(N.z * invLen, 0.0f, -N.x *invLen);
-        }
-        else {
-            float invLen = 1.0f / std::sqrt(N.y * N.y + N.z * N.z);
-            C = Vector3f(0.0f, N.z * invLen, -N.y *invLen);
-        }
-        B = crossProduct(C, N);
-        return a.x * B + a.y * C + a.z * N;
-    }
-
+class Material {
 public:
-    MaterialType m_type;
-    Vector3f m_color;
-    Vector3f m_emission;
-    float ior;  // index of refraction
-    float Kd, Ks;  // coefficient of diffuse and specular
-    float specularExponent;
-    bool textured;
+    // ── Type and non-PBR properties ───────────────────────────────────────────
 
-    inline Material(MaterialType t=DIFFUSE, Vector3f e=Vector3f(0,0,0));
-    inline MaterialType getType();
-    inline Vector3f getColor();
-    inline Vector3f getColorAt(double u, double v);
-    inline Vector3f getEmission();
-    inline bool hasEmission();
+    MaterialType m_type = DIFFUSE;
+    Vector3f m_emission = Vector3f(0);
+    float ior = 1.5f; // glass only
 
-    // sample a ray by Material properties
-    inline Vector3f sample(const Vector3f &wi, const Vector3f &N);
-    // given a ray, calculate the PdF of this ray
-    inline float pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N);
-    // given a ray direction and normal, calculate the contribution of this ray
-    inline Vector3f eval(const Vector3f &dir, const Vector3f &N);
+    // ── PBR parameters (factors, multiplied with texture sample if present) ────
 
+    Vector3f baseColor = Vector3f(1.f);
+    float roughness = 1.f;
+    float metallic = 0.f;
+    float Ks = 0.2f; // specular lobe sampling weight
+
+    // ── Textures ──────────────────────────────────────────────────────────────
+    // Set by the glTF loader. Sampled via TextureUtils at hit time only.
+
+    Texture baseColorTex;         // sRGB encoded, RGBA
+    Texture normalTex;            // linear, tangent-space XYZ in RGB
+    Texture metallicRoughnessTex; // linear, G = roughness, B = metallic
+    Texture emissiveTex;          // sRGB encoded, RGB
+
+    // ── Constructor ───────────────────────────────────────────────────────────
+
+    explicit Material(MaterialType t = DIFFUSE, Vector3f color = Vector3f(1.f)) : m_type(t), baseColor(color) {}
+
+    // ── Accessors ─────────────────────────────────────────────────────────────
+
+    MaterialType getType() const { return m_type; }
+    Vector3f getEmission() const { return m_emission; }
+    bool hasEmission() const { return m_emission.norm() > EPSILON; }
+
+    // ── ShadingData builder ───────────────────────────────────────────────────
+    //
+    // Call this once per hit to resolve all textures into a flat ShadingData.
+    // Caller supplies:
+    //   uv  — texture coordinates at the hit point
+    //   Ng  — geometric normal, already flipped to face the incoming ray
+    //   T   — tangent vector from mesh (or generated if mesh has no tangents)
+    //   B   — bitangent vector from mesh
+    //
+    // This is the only place texture sampling happens.
+    // Normal map is transformed from tangent space to world space here.
+
+    ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng, const Vector3f &T, const Vector3f &B) const {
+        ShadingData sd;
+        sd.uv = uv;
+        sd.Ng = Ng;
+        sd.T = T;
+        sd.B = B;
+
+        // Base colour — sRGB decode handled inside TextureUtils
+        sd.baseColor = TextureUtils::sampleBaseColor(baseColorTex, uv, baseColor);
+
+        // Metallic / roughness — modulate factor by texture
+        Vector2f mr = TextureUtils::sampleMetallicRoughness(metallicRoughnessTex, uv, roughness, metallic);
+        sd.roughness = std::max(mr.x, 0.01f); // clamp: avoids degenerate GGX lobe
+        sd.metallic = mr.y;
+
+        // Shading normal — apply normal map if present
+        if (!normalTex.empty()) {
+            Vector3f tn = TextureUtils::sampleNormalMap(normalTex, uv);
+
+            // Re-orthogonalise T against Ng to absorb interpolation drift
+            Vector3f Tn = normalize(T - dotProduct(T, Ng) * Ng);
+            Vector3f Bn = crossProduct(Ng, Tn);
+
+            sd.N = normalize(tn.x * Tn + tn.y * Bn + tn.z * Ng);
+        } else {
+            sd.N = Ng;
+        }
+
+        return sd;
+    }
+
+    // Convenience: build ShadingData when the mesh has no tangents.
+    // Generates an arbitrary tangent frame from Ng.
+    ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng) const {
+        Vector3f T, B;
+        buildTBN(Ng, T, B);
+        return buildShadingData(uv, Ng, T, B);
+    }
+
+    // ── BRDF interface ────────────────────────────────────────────────────────
+    //
+    // All three functions take a fully resolved ShadingData — no texture work.
+    //
+    // Convention:
+    //   wi = incoming light direction  (points AWAY from surface)
+    //   wo = outgoing view direction   (points AWAY from surface)
+    //   N  = sd.N, already normal-mapped and in world space
+
+    // Importance-sample an incoming direction wi.
+    // Returns BSDFSample with wi, f, pdf, and lobe type.
+    BSDFSample sample(const Vector3f &wo, const ShadingData &sd) const;
+
+    // Evaluate the full PBR BRDF f(wi, wo) — Cook-Torrance specular + Lambertian diffuse.
+    Vector3f eval(const Vector3f &wi, const Vector3f &wo, const ShadingData &sd) const;
+
+    // Mixed PDF matching the sampling strategy in sample().
+    float pdf(const Vector3f &wi, const Vector3f &wo, const ShadingData &sd) const;
+
+    // ── Emissive helper ───────────────────────────────────────────────────────
+    // Resolve emissive value at a UV, factoring in the emissive texture.
+    // Returns m_emission alone if no emissive texture is present.
+    Vector3f evalEmissive(const Vector2f &uv) const { return TextureUtils::sampleEmissive(emissiveTex, uv, m_emission); }
+
+    // ── Dielectric helpers (used by Scene::castRay for GLASS / MIRROR) ────────
+
+    static Vector3f reflectDir(const Vector3f &I, const Vector3f &N) { return I - 2.f * dotProduct(I, N) * N; }
+
+    static Vector3f refractDir(const Vector3f &I, const Vector3f &N, float ior_) {
+        float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
+        float etai = 1.f, etat = ior_;
+        Vector3f n = N;
+        if (cosi < 0.f) {
+            cosi = -cosi;
+        } else {
+            std::swap(etai, etat);
+            n = -N;
+        }
+        float eta = etai / etat;
+        float k = 1.f - eta * eta * (1.f - cosi * cosi);
+        return k < 0.f ? Vector3f(0) : eta * I + (eta * cosi - sqrtf(k)) * n;
+    }
+
+    // Returns reflectance kr. Transmittance = 1 - kr.
+    static float fresnelDielectric(const Vector3f &I, const Vector3f &N, float ior_) {
+        float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
+        float etai = 1.f, etat = ior_;
+        if (cosi > 0.f) std::swap(etai, etat);
+        float sint = etai / etat * sqrtf(std::max(0.f, 1.f - cosi * cosi));
+        if (sint >= 1.f) return 1.f;
+        float cost = sqrtf(std::max(0.f, 1.f - sint * sint));
+        cosi = std::abs(cosi);
+        float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
+        float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+        return (Rs * Rs + Rp * Rp) * 0.5f;
+    }
 };
 
-Material::Material(MaterialType t, Vector3f color){
-    m_type = t;
-    m_color = color;
-    Kd=0.8;
-    Ks=0.2;
-    specularExponent=25;
-    m_emission=0;
-    textured=false;
-    ior=2;
-}
+// ─── BRDF implementations ─────────────────────────────────────────────────────
 
-MaterialType Material::getType(){return m_type;}
-Vector3f Material::getColor(){return m_color;}
-Vector3f Material::getEmission() {return m_emission;}
-bool Material::hasEmission() {
-    if (m_emission.norm() > EPSILON) return true;
-    else return false;
-}
+inline BSDFSample Material::sample(const Vector3f &wo, const ShadingData &sd) const {
+    BSDFSample result;
+    result.f = Vector3f(0);
+    result.pdf = 0.f;
 
-Vector3f Material::getColorAt(double u, double v) {
-    int scale = 8;
-    int u_int = (int)(u * scale);
-    int v_int = (int)(v * scale);
-    if ((u_int + v_int) % 2 == 0)
-        return Vector3f(1, 1, 1);
-    else
-        return Vector3f(0.01f, 0.01f, 0.01f);
-}
+    switch (m_type) {
+    case DIFFUSE: {
+        float alpha = sd.roughness * sd.roughness;
+        float specularWeight = sd.metallic + (1.f - sd.metallic) * Ks;
+        bool doSpecular = get_random_float() < specularWeight;
 
-
-Vector3f Material::sample(const Vector3f &wi, const Vector3f &N){
-    switch(m_type){
-        default:
-        {
-            // cosine-weighted hemisphere sample (Malley's method): map uniform
-            // disk samples onto the hemisphere via z = sqrt(1 - r^2). This
-            // concentrates samples near the pole where cos(theta) is large.
-            float x_1 = get_random_float(), x_2 = get_random_float();
-            float r = std::sqrt(x_1);
-            float phi = 2.0f * M_PI * x_2;
-            float x = r * std::cos(phi);
-            float y = r * std::sin(phi);
-            float z = std::sqrt(std::max(0.0f, 1.0f - x_1));
-            Vector3f localRay(x, y, z);
-            return toWorld(localRay, N);
+        if (doSpecular) {
+            Vector3f H = sampleGGX(sd.N, alpha);
+            result.wi = normalize(reflectDir(-wo, H));
+            result.lobe = LOBE_SPECULAR;
+        } else {
+            result.wi = sampleCosineHemisphere(sd.N);
+            result.lobe = LOBE_DIFFUSE;
         }
+
+        // Reject samples that go below the surface
+        if (dotProduct(result.wi, sd.N) <= 0.f) return result;
+
+        result.f = eval(result.wi, wo, sd);
+        result.pdf = pdf(result.wi, wo, sd);
+        return result;
+    }
+    // GLASS and MIRROR are delta distributions handled directly in Scene::castRay.
+    default:
+        return result;
     }
 }
 
-float Material::pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N){
-    switch(m_type){
-        default:
-        {
-            // cosine-weighted hemisphere pdf = cos(theta) / pi
-            float cosTheta = dotProduct(wo, N);
-            if (cosTheta > 0.0f)
-                return cosTheta / M_PI;
-            else
-                return 0.0f;
-        }
+inline Vector3f Material::eval(const Vector3f &wi, const Vector3f &wo, const ShadingData &sd) const {
+    switch (m_type) {
+    case DIFFUSE: {
+        float NdotWo = dotProduct(wo, sd.N);
+        float NdotWi = dotProduct(wi, sd.N);
+        if (NdotWo <= 0.f || NdotWi <= 0.f) return Vector3f(0);
+
+        float alpha = sd.roughness * sd.roughness;
+        Vector3f H = normalize(wi + wo);
+        float NdotH = std::max(0.f, dotProduct(sd.N, H));
+        float VdotH = std::max(0.f, dotProduct(wo, H));
+
+        float D = D_GGX(NdotH, alpha);
+        Vector3f F0 = lerp(Vector3f(0.04f), sd.baseColor, sd.metallic);
+        Vector3f F = F_Schlick(VdotH, F0);
+        float G = G_Smith(NdotWo, NdotWi, alpha);
+
+        // Cook-Torrance specular
+        Vector3f specular = D * F * G / (4.f * NdotWo * NdotWi + 1e-6f);
+
+        // Lambertian diffuse — metals have no diffuse, Fresnel attenuates dielectrics
+        Vector3f diffuse = (Vector3f(1.f) - F) * (1.f - sd.metallic) * sd.baseColor / M_PI;
+
+        return diffuse + specular;
+    }
+    default:
+        return Vector3f(0);
     }
 }
 
-Vector3f Material::eval(const Vector3f &dir, const Vector3f &N){
-    switch(m_type){
-        default:
-        {
-            // calculate the contribution of diffuse   model
-            float cosalpha = dotProduct(N, dir);
-            if (cosalpha > 0.0f) {
-                Vector3f diffuse = Kd / M_PI;
-                return diffuse;
-            }
-            else
-                return Vector3f(0.0f);
-            break;
-        }
+inline float Material::pdf(const Vector3f &wi, const Vector3f &wo, const ShadingData &sd) const {
+    switch (m_type) {
+    case DIFFUSE: {
+        float NdotWi = dotProduct(wi, sd.N);
+        float NdotWo = dotProduct(wo, sd.N);
+        if (NdotWi <= 0.f || NdotWo <= 0.f) return 0.f;
+
+        float alpha = sd.roughness * sd.roughness;
+        float specularWeight = sd.metallic + (1.f - sd.metallic) * Ks;
+        Vector3f H = normalize(wi + wo);
+        float NdotH = std::max(0.f, dotProduct(sd.N, H));
+        float VdotH = std::max(0.f, dotProduct(wo, H));
+
+        return pdfMixed(NdotWi, NdotH, VdotH, alpha, specularWeight);
+    }
+    default:
+        return 0.f;
     }
 }
-
-#endif //RAYTRACING_MATERIAL_H

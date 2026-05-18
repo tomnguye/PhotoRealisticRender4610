@@ -1,47 +1,62 @@
 #include "Renderer.hpp"
 #include "Scene.hpp"
 #include "Triangle.hpp"
-#include "Sphere.hpp"
+// #include "Sphere.hpp"
 #include "Vector.hpp"
 #include "global.hpp"
 #include <chrono>
 
-float TASK_N=2; // 1.1, 1.2, 1.3, 2
+float TASK_N = 2; // 1.1, 1.2, 1.3, 2
 
 // In the main function of the program, we create the scene (create objects and
 // lights) as well as set the options for the render (image width and height,
 // maximum recursion depth, field-of-view, etc.). We then call the render
 // function().
-int main(int argc, char** argv)
-{
-    if (argc>=2)
-        TASK_N=(float)atof(argv[1]);
+int main(int argc, char **argv) {
+    if (argc >= 2) TASK_N = (float)atof(argv[1]);
     // change the resolution for quick debugging if rendering is slow
-    // Scene scene(64, 64);
-    // Scene scene(128, 128);
-    // Scene scene(256, 256); // use this resolution for final rendering
-    Scene scene(512, 512);
-    // Scene scene(1024, 1024);
 
-    scene.RussianRoulette = 0.8;
-    // scene.spp = 64;
-    scene.spp = 64;  // use 1 sample per pixel for quick debugging, use 64 for final rendering
+    Scene scene(256, 256);
+    scene.spp = 1024;
+    scene.RussianRoulette = 0.95;
+    scene.maxDepth = 30;
+    scene.camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1), 40.0f);
+    scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
+    // scene.backgroundColor = Vector3f(0);
 
-    Material* pink = new Material(DIFFUSE, Vector3f(0.75f, 0.42f, 0.42f));
-    Material* blue = new Material(DIFFUSE, Vector3f(0.50f, 0.45f, 0.70f));
-    Material* purple = new Material(DIFFUSE, Vector3f(0.73f, 0.33f, 0.83f));
-    Material* green = new Material(DIFFUSE, Vector3f(0.35f, 0.85f, 0.35f));
-    Material* white = new Material(DIFFUSE, Vector3f(0.48f, 0.45f, 0.4f));
-    Material* light = new Material(EMIT, Vector3f(1));
-    light->m_emission=100;
+    // Optional DoF — comment out for pinhole
+    scene.camera.aperture = 0.21f; // bigger = more blur
+    scene.camera.focusDistance = 9.2981;
 
-    MeshTriangle floor("../models/cornellbox/floor.obj", Vector3f(0), white);
-    MeshTriangle shortbox("../models/cornellbox/shortbox.obj",Vector3f(0), new Material(MIRROR, Vector3f(1)));
-    MeshTriangle tallbox("../models/cornellbox/tallbox.obj", Vector3f(0), new Material(MIRROR, Vector3f(1)));
-    MeshTriangle left("../models/cornellbox/left.obj", Vector3f(0), pink);
-    MeshTriangle right("../models/cornellbox/right.obj",Vector3f(0),  blue);
-    MeshTriangle light_("../models/cornellbox/light.obj",Vector3f(0,-5,0), light);
-    MeshTriangle light_back("../models/cornellbox/light.obj", Vector3f(0, -5, -500), light);
+    scene.build();
+
+    scene.backgroundColor = Vector3f(0.235294, 0.67451, 0.843137);
+    Material *pink = new Material(DIFFUSE, Vector3f(0.75f, 0.42f, 0.42f));
+    Material *blue = new Material(DIFFUSE, Vector3f(0.50f, 0.45f, 0.70f));
+    Material *purple = new Material(DIFFUSE, Vector3f(0.73f, 0.33f, 0.83f));
+    Material *green = new Material(DIFFUSE, Vector3f(0.35f, 0.85f, 0.35f));
+    Material *white = new Material(DIFFUSE, Vector3f(0.48f, 0.45f, 0.4f));
+    Material *light = new Material(EMIT, Vector3f(1));
+    light->m_emission = 50.0f;
+
+    // MeshTriangle floor("../models/cornellbox/floor.obj", Vector3f(0), white);
+    // MeshTriangle shortbox("../models/cornellbox/shortbox.obj", Vector3f(0), new Material(MIRROR, Vector3f(1)));
+    // MeshTriangle tallbox("../models/cornellbox/tallbox.obj", Vector3f(0), new Material(MIRROR, Vector3f(1)));
+    // MeshTriangle left("../models/cornellbox/left.obj", Vector3f(0), pink);
+    // MeshTriangle right("../models/cornellbox/right.obj", Vector3f(0), blue);
+    // MeshTriangle light_("../models/cornellbox/light.obj", Vector3f(0, -5, 0), light);
+    // MeshTriangle light_back("../models/cornellbox/light.obj", Vector3f(0, -5, -500), light);
+
+    MeshTriangle floor("../models/gltf/floor.glb", white);
+    Material *roughMirror = new Material(DIFFUSE, Vector3f(0.95f));
+    roughMirror->roughness = 0.05f;
+    roughMirror->metallic = 1.0f; // full metallic — no diffuse lobe, Fresnel from F0
+    MeshTriangle shortbox("../models/gltf/shortbox.glb", roughMirror);
+    MeshTriangle tallbox("../models/gltf/tallbox.glb", roughMirror);
+    MeshTriangle left("../models/gltf/left.glb", pink);
+    MeshTriangle right("../models/gltf/right.glb", blue);
+    MeshTriangle light_("../models/gltf/light.glb", light);
+    // MeshTriangle light_back("../models/cornellbox/light.obj", light);
 
     scene.Add(&floor);
     scene.Add(&shortbox);
@@ -51,27 +66,25 @@ int main(int argc, char** argv)
     scene.Add(&light_);
     // scene.Add(&light_back);
 
-    scene.Add(new MeshTriangle("../models/spot/spot.obj", Vector3f(0),
-                    new Material(GLASS, Vector3f(1))));
+    scene.Add(new MeshTriangle("../models/spot/spot.obj", Vector3f(0), new Material(GLASS, Vector3f(1))));
 
-    scene.Add(new Sphere(Vector3f(450,60,100), 60,
-                         new Material(GLASS, Vector3f(1))));
+    // scene.Add(new Sphere(Vector3f(450,60,100), 60,
+    //                      new Material(GLASS, Vector3f(1))));
 
-    Vector3f verts[4] = {{0,0,0}, {552.8,0,0}, {549.6, 0,559.2}, {0,0,559.2}};
-    Vector2f st[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-    uint32_t vertIndex[6] = {0, 2, 1, 2,0,3};
-    Material* mfloor=new Material(DIFFUSE, Vector3f(0));
-    mfloor->textured=true;
-    scene.Add(new MeshTriangle(verts, vertIndex, 2,st,mfloor));
+    // Vector3f verts[4] = {{0, 0, 0}, {552.8, 0, 0}, {549.6, 0, 559.2}, {0, 0, 559.2}};
+    // Vector2f st[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    // uint32_t vertIndex[6] = {0, 2, 1, 2, 0, 3};
+    // Material *mfloor = new Material(DIFFUSE, Vector3f(0));
+    // mfloor->textured = true;
+    // scene.Add(new MeshTriangle(verts, vertIndex, 2, st, mfloor));
 
     scene.buildBVH();
 
     auto start = std::chrono::system_clock::now();
-    scene.buildPhotonMaps(100000000);
+    // scene.buildPhotonMaps(1e6);
 
     Renderer r;
 
-    
     r.Render(scene);
     auto stop = std::chrono::system_clock::now();
 
