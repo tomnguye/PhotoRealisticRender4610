@@ -63,7 +63,13 @@ public:
         caustic_grid.build(caustic_map, photon_radius);
     }
     Vector3f estimateIrradiance(Vector3f pos, Vector3f normal, const PhotonGrid& grid, float radius) const;
-    float photon_radius = 0.5f;
+    float photon_radius = 1.0f;
+    Vector3f shadeDiffuse(const Ray& ray, const Intersection& inter, int depth) const;
+    Vector3f shadeGlass(const Ray& ray, const Intersection& inter, int depth) const;
+    Vector3f shadeMirror(const Ray& ray, const Intersection& inter, int depth) const;
+    Vector3f Indirect(const Vector3f& color, const Ray& ray, const Intersection& inter, int depth) const;
+    Vector3f Direct(const Vector3f& color, const Ray& ray, const Intersection& inter) const;
+    Vector3f Caustic(const Vector3f& color, const Intersection& inter) const;
     // creating the scene (adding objects and lights)
     std::vector<Object* > objects;
 

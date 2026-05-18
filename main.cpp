@@ -67,7 +67,7 @@ int main(int argc, char** argv)
     scene.buildBVH();
 
     auto start = std::chrono::system_clock::now();
-    scene.buildPhotonMaps(20000000);
+    scene.buildPhotonMaps(100000000);
 
     Renderer r;
 

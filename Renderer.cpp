@@ -42,37 +42,37 @@ void Renderer::Render(const Scene &scene) {
                 framebuffer[m] = Vector3f::Min(scene.castRay(ray, 0), 1);
             } else {
                 // TODO: task 2 multi-sampling (anti-aliasing)
-                // framebuffer[m] = Vector3f();
-                // for (int k = 0; k < scene.spp; k ++) {
+                framebuffer[m] = Vector3f();
+                for (int k = 0; k < scene.spp; k ++) {
+                    float x = (-1.0f + 2.0f * (i + get_random_float()) / scene.width) * scale * imageAspectRatio;
+                    float y = (1.0f - 2.0f * (j + get_random_float()) / scene.height) * scale;
+                    Ray ray = {eye_pos, normalize(Vector3f(x, y, 1))};
+                    // framebuffer[m] += Vector3f::Min(scene.castRay(ray , 0), 1);
+                    framebuffer[m] += scene.castRay(ray , 0);
+                }
+                framebuffer[m] = framebuffer[m]/ scene.spp;
+                // int min_samples = sqrt(scene.spp);
+                // int samples = 0;
+                // Vector3f color = {0, 0, 0};
+                // Vector3f prev_avg = {0, 0, 0};
+
+                // while (samples < scene.spp) {
                 //     float x = (1.0f - 2.0f * (i + get_random_float()) / scene.width) * scale * imageAspectRatio;
                 //     float y = (1.0f - 2.0f * (j + get_random_float()) / scene.height) * scale;
                 //     Ray ray = {eye_pos, normalize(Vector3f(x, y, 1))};
-                //     // framebuffer[m] += Vector3f::Min(scene.castRay(ray , 0), 1);
-                //     framebuffer[m] += scene.castRay(ray , 0);
+
+                //     color += scene.castRay(ray, 0);
+                //     samples++;
+
+                //     if (samples >= min_samples) {
+                //         Vector3f current_avg = color / samples;
+                //         float change = (current_avg - prev_avg).norm();
+                //         if (change < 0.001f) break;
+                //         prev_avg = current_avg;
+                //     }
                 // }
-                // framebuffer[m] = framebuffer[m]/ scene.spp;
-                int min_samples = sqrt(scene.spp);
-                int samples = 0;
-                Vector3f color = {0, 0, 0};
-                Vector3f prev_avg = {0, 0, 0};
 
-                while (samples < scene.spp) {
-                    float x = (1.0f - 2.0f * (i + get_random_float()) / scene.width) * scale * imageAspectRatio;
-                    float y = (1.0f - 2.0f * (j + get_random_float()) / scene.height) * scale;
-                    Ray ray = {eye_pos, normalize(Vector3f(x, y, 1))};
-
-                    color += scene.castRay(ray, 0);
-                    samples++;
-
-                    if (samples >= min_samples) {
-                        Vector3f current_avg = color / samples;
-                        float change = (current_avg - prev_avg).norm();
-                        if (change < 0.001f) break;
-                        prev_avg = current_avg;
-                    }
-                }
-
-                framebuffer[m] = color / samples;
+                // framebuffer[m] = color / samples;
             }
         }
         progress += 1.0f / (float)scene.height;

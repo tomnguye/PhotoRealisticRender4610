@@ -87,3 +87,4 @@ std::vector<Photon> PhotonGrid::query(Vector3f pos, float radius) const {
     
     return result;
 }
+
