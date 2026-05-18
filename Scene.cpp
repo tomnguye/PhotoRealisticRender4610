@@ -1,4 +1,6 @@
 #include "Scene.hpp"
+#include <queue>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -6,18 +8,32 @@
 // ─────────────────────────────────────────────
 //  Helpers
 // ─────────────────────────────────────────────
-
 Vector3f Scene::estimateIrradiance(Vector3f pos, Vector3f normal,
-                                    const PhotonGrid& grid, float radius) const
+                                    const PhotonGrid& grid, float initial_radius) const
 {
-    auto nearby = grid.query(pos, radius);
+    const int targetPhotons = 8;
+    
+    // initial query
+    auto nearby = grid.query(pos, initial_radius);
+    float radius = initial_radius;
+
+    // if not enough, predict radius needed based on photon density
+    if ((int)nearby.size() < targetPhotons && !nearby.empty()) {
+        // density = photons / area
+        // to get targetPhotons we need area = targetPhotons / density
+        // radius = sqrt(targetPhotons / density / pi)
+        float density = nearby.size() / (M_PI * initial_radius * initial_radius);
+        float predicted_radius = std::sqrt(targetPhotons / (density * M_PI));
+        predicted_radius = std::min(predicted_radius, initial_radius * 8.0f); // cap growth
+        nearby = grid.query(pos, predicted_radius);
+        radius = predicted_radius;
+    } else if (nearby.empty()) {
+        return {};
+    }
+
     if (nearby.empty()) return {};
 
-    float max_dist = 0;
-    for (auto& p : nearby)
-        max_dist = std::max(max_dist, (p.position - pos).norm());
-
-    float area = M_PI * max_dist * max_dist;
+    float area = M_PI * radius * radius;
     if (area < EPSILON) return {};
 
     Vector3f irradiance = {};
@@ -28,7 +44,6 @@ Vector3f Scene::estimateIrradiance(Vector3f pos, Vector3f normal,
     }
     return irradiance / area;
 }
-
 // ─────────────────────────────────────────────
 //  Photon tracing
 // ─────────────────────────────────────────────

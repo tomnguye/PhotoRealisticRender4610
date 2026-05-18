@@ -63,7 +63,7 @@ public:
         caustic_grid.build(caustic_map, photon_radius);
     }
     Vector3f estimateIrradiance(Vector3f pos, Vector3f normal, const PhotonGrid& grid, float radius) const;
-    float photon_radius = 1.0f;
+    float photon_radius = 0.2f;
     Vector3f shadeDiffuse(const Ray& ray, const Intersection& inter, int depth) const;
     Vector3f shadeGlass(const Ray& ray, const Intersection& inter, int depth) const;
     Vector3f shadeMirror(const Ray& ray, const Intersection& inter, int depth) const;
