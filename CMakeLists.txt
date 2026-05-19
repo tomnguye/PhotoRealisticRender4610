@@ -27,7 +27,6 @@ set(SOURCES
     Renderer.hpp
     Texture.hpp
     TextureUtils.hpp
-    BRDFTypes.hpp
     BRDFUtils.hpp
     Photon.cpp
     Photon.hpp

@@ -43,7 +43,8 @@ public:
     Vector3f shadeDiffuse(const Ray &ray, const Intersection &firstInter, int depth) const;
     Vector3f shadeGlass(const Ray &ray, const Intersection &inter, int depth) const;
     Vector3f shadeMirror(const Ray &ray, const Intersection &inter, int depth) const;
-    bool trace(const Ray &ray, const std::vector<Object *> &objects, float &tNear, uint32_t &index, Object **hitObject);
+    bool trace(const Ray &ray, const std::vector<Object *> &objects, float &tNear, uint32_t &index,
+               Object **hitObject);
 
     std::vector<Object *> objects;
     BVHAccel *bvh;
@@ -75,14 +76,21 @@ public:
 
         Ray shadowRay(hitPoint + toLight * EPSILON, toLight);
         Intersection shadowInter = intersect(shadowRay);
-        bool visible = shadowInter.happened && shadowInter.obj->hasEmit() && std::abs(shadowInter.tnear - (dist - EPSILON)) < 1e-2f * dist;
+        bool visible = shadowInter.happened && shadowInter.obj->hasEmit() &&
+                       std::abs(shadowInter.tnear - (dist - EPSILON)) < 1e-2f * dist;
 
         float pdfSolidAngle = lightPdfArea * dist * dist / std::max(cosThetaLight, 1e-4f);
         if (cosThetaLight <= 0.f) {
             visible = false; /* or return early */
         }
 
-        return {lightSample.material->m_emission, toLight, pdfSolidAngle, lightPdfArea, cosThetaLight, dist, visible};
+        return {lightSample.material->m_emission,
+                toLight,
+                pdfSolidAngle,
+                lightPdfArea,
+                cosThetaLight,
+                dist,
+                visible};
     }
 
     // ── MIS weight (power heuristic, beta=2) ──────────────────────────────────
@@ -91,16 +99,20 @@ public:
 
     // ── NEE: environment map ──────────────────────────────────────────────────
 
-    Vector3f evalEnvSampleAt(const Vector3f &hitPoint, const Vector3f &wo, const ShadingData &sd, Material *mat) const {
-        if (envMap.empty()) return Vector3f(0);
+    Vector3f evalEnvSampleAt(const Vector3f &hitPoint, const Vector3f &wo, const ShadingData &sd,
+                             Material *mat) const {
+        if (envMap.empty())
+            return Vector3f(0);
 
         float envPdf;
         Vector3f envDir = envMap.importanceSample(envPdf);
-        if (envPdf < 1e-6f) return Vector3f(0);
+        if (envPdf < 1e-6f)
+            return Vector3f(0);
 
         Ray shadowRay(hitPoint + envDir * EPSILON, envDir);
         Intersection shadowInter = intersect(shadowRay);
-        if (shadowInter.happened) return Vector3f(0);
+        if (shadowInter.happened)
+            return Vector3f(0);
 
         float cosTheta = std::max(0.f, dotProduct(envDir, sd.N));
         Vector3f brdf = mat->eval(envDir, wo, sd);
@@ -113,8 +125,10 @@ public:
 
     // ── NEE: geometry light ───────────────────────────────────────────────────
 
-    Vector3f evalLightSample(const DirectSample &light, const Vector3f &wo, const ShadingData &sd, Material *mat) const {
-        if (!light.visible) return Vector3f(0);
+    Vector3f evalLightSample(const DirectSample &light, const Vector3f &wo, const ShadingData &sd,
+                             Material *mat) const {
+        if (!light.visible)
+            return Vector3f(0);
 
         float cosThetaSurface = std::max(0.f, dotProduct(light.dir, sd.N));
         Vector3f brdf = mat->eval(light.dir, wo, sd);
@@ -132,11 +146,13 @@ public:
     // and hands back the next intersection so the caller avoids a second BVH
     // traversal.
 
-    Vector3f evalBRDFSample(const Vector3f &wi, float brdfPdf, const Vector3f &hitPoint, const Vector3f &wo, const ShadingData &sd, Material *mat,
+    Vector3f evalBRDFSample(const Vector3f &wi, float brdfPdf, const Vector3f &hitPoint,
+                            const Vector3f &wo, const ShadingData &sd, Material *mat,
                             bool &hitLight, Intersection &nextInter) const {
         hitLight = false;
 
-        if (brdfPdf < 1e-6f) return Vector3f(0);
+        if (brdfPdf < 1e-6f)
+            return Vector3f(0);
         Vector3f brdf = mat->eval(wi, wo, sd);
         float cosTheta = std::max(0.f, dotProduct(wi, sd.N));
 
@@ -149,7 +165,8 @@ public:
             float cosThetaLight = std::max(0.f, dotProduct(-wi, nextInter.normal.normalized()));
             float hitDist = (nextInter.coords - hitPoint).norm();
             float lightPdfArea = pdfLight(nextInter);
-            float lightPdfSolidAngle = lightPdfArea * hitDist * hitDist / std::max(cosThetaLight, 1e-4f);
+            float lightPdfSolidAngle =
+                lightPdfArea * hitDist * hitDist / std::max(cosThetaLight, 1e-4f);
             float wBrdf = mis(brdfPdf, lightPdfSolidAngle);
             return wBrdf * nextInter.material->m_emission * brdf * cosTheta / brdfPdf;
         }
@@ -167,7 +184,9 @@ public:
 
     // ── Dielectric helpers ────────────────────────────────────────────────────
 
-    static Vector3f reflect(const Vector3f &I, const Vector3f &N) { return I - 2.f * dotProduct(I, N) * N; }
+    static Vector3f reflect(const Vector3f &I, const Vector3f &N) {
+        return I - 2.f * dotProduct(I, N) * N;
+    }
 
     static Vector3f refract(const Vector3f &I, const Vector3f &N, float ior) {
         float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
@@ -187,9 +206,11 @@ public:
     static float fresnel(const Vector3f &I, const Vector3f &N, float ior) {
         float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
         float etai = 1.f, etat = ior;
-        if (cosi > 0.f) std::swap(etai, etat);
+        if (cosi > 0.f)
+            std::swap(etai, etat);
         float sint = etai / etat * sqrtf(std::max(0.f, 1.f - cosi * cosi));
-        if (sint >= 1.f) return 1.f;
+        if (sint >= 1.f)
+            return 1.f;
         float cost = sqrtf(std::max(0.f, 1.f - sint * sint));
         cosi = std::abs(cosi);
         float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));

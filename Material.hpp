@@ -1,6 +1,5 @@
 #pragma once
 
-#include "BRDFTypes.hpp"
 #include "BRDFUtils.hpp"
 #include "Texture.hpp"
 #include "TextureUtils.hpp"
@@ -52,7 +51,8 @@ public:
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    explicit Material(MaterialType t = DIFFUSE, Vector3f color = Vector3f(1.f)) : m_type(t), baseColor(color) {}
+    explicit Material(MaterialType t = DIFFUSE, Vector3f color = Vector3f(1.f))
+        : m_type(t), baseColor(color) {}
 
     // ── Accessors ─────────────────────────────────────────────────────────────
 
@@ -72,7 +72,8 @@ public:
     // This is the only place texture sampling happens.
     // Normal map is transformed from tangent space to world space here.
 
-    ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng, const Vector3f &T, const Vector3f &B) const {
+    ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng, const Vector3f &T,
+                                 const Vector3f &B) const {
         ShadingData sd;
         sd.uv = uv;
         sd.Ng = Ng;
@@ -83,7 +84,8 @@ public:
         sd.baseColor = TextureUtils::sampleBaseColor(baseColorTex, uv, baseColor);
 
         // Metallic / roughness — modulate factor by texture
-        Vector2f mr = TextureUtils::sampleMetallicRoughness(metallicRoughnessTex, uv, roughness, metallic);
+        Vector2f mr =
+            TextureUtils::sampleMetallicRoughness(metallicRoughnessTex, uv, roughness, metallic);
         sd.roughness = std::max(mr.x, 0.01f); // clamp: avoids degenerate GGX lobe
         sd.metallic = mr.y;
 
@@ -133,11 +135,15 @@ public:
     // ── Emissive helper ───────────────────────────────────────────────────────
     // Resolve emissive value at a UV, factoring in the emissive texture.
     // Returns m_emission alone if no emissive texture is present.
-    Vector3f evalEmissive(const Vector2f &uv) const { return TextureUtils::sampleEmissive(emissiveTex, uv, m_emission); }
+    Vector3f evalEmissive(const Vector2f &uv) const {
+        return TextureUtils::sampleEmissive(emissiveTex, uv, m_emission);
+    }
 
     // ── Dielectric helpers (used by Scene::castRay for GLASS / MIRROR) ────────
 
-    static Vector3f reflectDir(const Vector3f &I, const Vector3f &N) { return I - 2.f * dotProduct(I, N) * N; }
+    static Vector3f reflectDir(const Vector3f &I, const Vector3f &N) {
+        return I - 2.f * dotProduct(I, N) * N;
+    }
 
     static Vector3f refractDir(const Vector3f &I, const Vector3f &N, float ior_) {
         float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
@@ -158,9 +164,11 @@ public:
     static float fresnelDielectric(const Vector3f &I, const Vector3f &N, float ior_) {
         float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
         float etai = 1.f, etat = ior_;
-        if (cosi > 0.f) std::swap(etai, etat);
+        if (cosi > 0.f)
+            std::swap(etai, etat);
         float sint = etai / etat * sqrtf(std::max(0.f, 1.f - cosi * cosi));
-        if (sint >= 1.f) return 1.f;
+        if (sint >= 1.f)
+            return 1.f;
         float cost = sqrtf(std::max(0.f, 1.f - sint * sint));
         cosi = std::abs(cosi);
         float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
@@ -192,7 +200,8 @@ inline BSDFSample Material::sample(const Vector3f &wo, const ShadingData &sd) co
         }
 
         // Reject samples that go below the surface
-        if (dotProduct(result.wi, sd.N) <= 0.f) return result;
+        if (dotProduct(result.wi, sd.N) <= 0.f)
+            return result;
 
         result.f = eval(result.wi, wo, sd);
         result.pdf = pdf(result.wi, wo, sd);
@@ -204,12 +213,14 @@ inline BSDFSample Material::sample(const Vector3f &wo, const ShadingData &sd) co
     }
 }
 
-inline Vector3f Material::eval(const Vector3f &wi, const Vector3f &wo, const ShadingData &sd) const {
+inline Vector3f Material::eval(const Vector3f &wi, const Vector3f &wo,
+                               const ShadingData &sd) const {
     switch (m_type) {
     case DIFFUSE: {
         float NdotWo = dotProduct(wo, sd.N);
         float NdotWi = dotProduct(wi, sd.N);
-        if (NdotWo <= 0.f || NdotWi <= 0.f) return Vector3f(0);
+        if (NdotWo <= 0.f || NdotWi <= 0.f)
+            return Vector3f(0);
 
         float alpha = sd.roughness * sd.roughness;
         Vector3f H = normalize(wi + wo);
@@ -239,7 +250,8 @@ inline float Material::pdf(const Vector3f &wi, const Vector3f &wo, const Shading
     case DIFFUSE: {
         float NdotWi = dotProduct(wi, sd.N);
         float NdotWo = dotProduct(wo, sd.N);
-        if (NdotWi <= 0.f || NdotWo <= 0.f) return 0.f;
+        if (NdotWi <= 0.f || NdotWo <= 0.f)
+            return 0.f;
 
         float alpha = sd.roughness * sd.roughness;
         float specularWeight = sd.metallic + (1.f - sd.metallic) * Ks;
