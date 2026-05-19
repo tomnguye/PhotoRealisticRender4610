@@ -21,7 +21,7 @@ public:
     float RussianRoulette = 0.95f;
     int spp = 1024;
     float adaptiveThreshold = 0.05;
-    float exposure = 1.0f;
+    float exposure = 0.18f;
 
     Scene(int w, int h) : width(w), height(h) {}
 

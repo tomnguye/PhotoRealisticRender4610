@@ -72,12 +72,10 @@ Vector3f Scene::shadeDiffuse(const Ray &ray, const Intersection &firstInter, int
             break;
         }
 
-        // ── Hit emitter ───────────────────────────────────────────────────────
-        // Count emission only when the previous bounce was delta (mirror/glass)
-        // or this is the camera ray. After a diffuse bounce, NEE already
-        // sampled this light via MIS so adding it again would double-count.
         if (inter.obj->hasEmit()) {
-            if (prevWasDelta) radiance += throughput * inter.material->m_emission;
+            if (prevWasDelta || true) {
+                radiance += throughput * inter.material->m_emission;
+            }
             break;
         }
 
@@ -87,36 +85,14 @@ Vector3f Scene::shadeDiffuse(const Ray &ray, const Intersection &firstInter, int
         // ── Flip geometric normal to face incoming ray ────────────────────────
         Vector3f geoN = dotProduct(currentRay.direction, inter.normal) < 0 ? inter.normal : -inter.normal;
 
-        // ── Mirror: perfect specular reflection ───────────────────────────────
-        // Delta BSDF — NEE and BRDF-MIS both have zero weight (pdf is a Dirac
-        // delta), so we skip both and just follow the deterministic reflect
-        // direction. Throughput picks up baseColor for tinted mirrors (white = 1).
-        // RR still applies so infinite mirror chains can terminate.
         if (mat->m_type == MIRROR) {
             Vector3f reflDir = currentRay.direction - 2.f * dotProduct(currentRay.direction, geoN) * geoN;
             currentRay = Ray(hitPoint + reflDir * EPSILON, reflDir);
             inter = intersect(currentRay);
             prevWasDelta = true;
             throughput = throughput * mat->baseColor;
-            float rrProb = std::min(RussianRoulette, std::max({throughput.x, throughput.y, throughput.z}));
-            if (get_random_float() > rrProb) break;
-            throughput = throughput * (1.f / rrProb);
-            continue;
         }
 
-        // ── Glass: perfect specular dielectric (reflect or refract) ──────────
-        // Importance-sample the two delta lobes by choosing reflect with
-        // probability kr, refract with probability (1-kr).  Sampling
-        // proportional to contribution means the Monte Carlo weight for
-        // whichever path is chosen cancels to exactly 1 — no division needed.
-        //
-        // fresnel / refract receive inter.normal (raw, unflipped) so they can
-        // detect inside/outside themselves via sign(dot(I,N)) and apply the
-        // correct IOR ratio.  reflect uses geoN (already facing the ray) since
-        // the reflection formula requires the normal on the incident side.
-        //
-        // TIR: refract returns a zero vector when the angle exceeds the
-        // critical angle; fall back to full reflection with weight 1.
         if (mat->m_type == GLASS) {
             float kr = fresnel(currentRay.direction, inter.normal, mat->ior);
             bool doReflect = get_random_float() < kr;
@@ -127,111 +103,67 @@ Vector3f Scene::shadeDiffuse(const Ray &ray, const Intersection &firstInter, int
             } else {
                 nextDir = refract(currentRay.direction, inter.normal, mat->ior);
                 if (nextDir.norm() < 1e-6f) {
-                    // TIR: refract returned zero — fall back to full reflection
                     nextDir = reflect(currentRay.direction, geoN).normalized();
                 }
             }
 
-            // Weight = 1: the sampling probability cancels the BSDF value exactly.
             throughput = throughput * mat->baseColor;
             currentRay = Ray(hitPoint + nextDir * EPSILON, nextDir);
             inter = intersect(currentRay);
             prevWasDelta = true;
-
-            float rrProb = std::min(RussianRoulette, std::max({throughput.x, throughput.y, throughput.z}));
-            if (get_random_float() > rrProb) break;
-            throughput = throughput * (1.0f / rrProb);
-            continue;
         }
 
-        // ── From here: non-delta (GGX / diffuse) surface ─────────────────────
-        bool wasDelta = prevWasDelta; // save before overwriting — caustic check below needs it
-        prevWasDelta = false;         // NEE fires this bounce, so emitter hits next bounce must not be double-counted
+        if (mat->m_type == DIFFUSE) {
 
-        // ── Build ShadingData ─────────────────────────────────────────────────
-        // Resolves all textures (base colour, normal map, roughness/metallic)
-        // into a flat struct.  This is the only place texture sampling happens.
-        ShadingData sd;
-        if (inter.hasTangent) {
-            Vector3f T = normalize(inter.tangent);
-            sd = mat->buildShadingData(inter.tcoords, geoN, T, inter.tangentHandedness);
-        } else {
-            sd = mat->buildShadingData(inter.tcoords, geoN);
+            ShadingData sd;
+            if (inter.hasTangent) {
+                Vector3f T = normalize(inter.tangent);
+                sd = mat->buildShadingData(inter.tcoords, geoN, T, inter.tangentHandedness);
+            } else {
+                sd = mat->buildShadingData(inter.tcoords, geoN);
+            }
+
+            if (!photon_map.caustic_map.empty() && prevWasDelta) {
+                Vector3f caustic = photon_map.estimateIrradiance(hitPoint, sd.N) * sd.baseColor / M_PI;
+                radiance += throughput * caustic;
+            }
+            prevWasDelta = false;
+
+            Vector3f emissive = mat->evalEmissive(inter.tcoords);
+            if (emissive.norm() > EPSILON) {
+                radiance += throughput * emissive;
+                break;
+            }
+
+            Vector3f wo = -currentRay.direction;
+            BSDFSample bsdf = mat->sample(wo, sd);
+            if (bsdf.pdf < 1e-6f) break;
+
+            if (totalEmitArea > 0.f) {
+                DirectSample light = sampleDirectLight(hitPoint, sd.N);
+                radiance += throughput * evalLightSample(light, wo, sd, mat);
+            }
+
+            radiance += throughput * evalEnvSampleAt(hitPoint, wo, sd, mat);
+
+            bool hitLight = false;
+            Intersection nextInter;
+            radiance += throughput * evalBRDFSample(bsdf.wi, bsdf.pdf, hitPoint, wo, sd, mat, hitLight, nextInter);
+            if (hitLight) break;
+
+            float cosTheta = std::max(0.f, dotProduct(bsdf.wi, sd.N));
+            throughput = throughput * bsdf.f * cosTheta / bsdf.pdf;
+
+            currentRay = Ray(hitPoint + bsdf.wi * EPSILON, bsdf.wi);
+            inter = nextInter;
         }
 
-        // ── Emissive texture ──────────────────────────────────────────────────
-        // Meshes with an emissive texture but no EMIT material type end up here.
-        // Treat them as a light and terminate — no further bounce needed.
-        Vector3f emissive = mat->evalEmissive(inter.tcoords);
-        if (emissive.norm() > EPSILON) {
-            radiance += throughput * emissive;
-            break;
-        }
-
-        // ── Sample next direction via VNDF BSDF ───────────────────────────────
-        // sample() draws wi from a mixture of VNDF-GGX (specular) and
-        // cosine-hemisphere (diffuse), weighted by specularWeight.
-        // VNDF guarantees VdotH > 0, eliminating the firefly source that
-        // plain NDF sampling produces.
-        Vector3f wo = -currentRay.direction;
-        BSDFSample bsdf = mat->sample(wo, sd);
-        if (bsdf.pdf < 1e-6f) break;
-
-        // ── NEE: area light (MIS, power heuristic) ────────────────────────────
-        // Sample the light surface directly and combine with the BRDF pdf via
-        // MIS.  Only valid on non-delta surfaces; delta surfaces skip NEE above.
-        if (totalEmitArea > 0.f) {
-            DirectSample light = sampleDirectLight(hitPoint, sd.N);
-            radiance += throughput * evalLightSample(light, wo, sd, mat);
-        }
-
-        // ── NEE: environment map (MIS, power heuristic) ───────────────────────
-        // Importance-samples the env map and combines with the BRDF pdf via MIS.
-        radiance += throughput * evalEnvSampleAt(hitPoint, wo, sd, mat);
-
-        // ── Caustics from photon map ───────────────────────────────────────────
-        // Inject caustic irradiance only at the first diffuse hit after a specular
-        // bounce.  NEE covers direct illumination; the photon map covers indirect
-        // caustic energy that path tracing alone would need many bounces to find.
-        // Do NOT terminate here — the path continues for indirect GI as normal.
-        if (!photon_map.caustic_map.empty() && wasDelta) {
-            Vector3f caustic = photon_map.estimateIrradiance(hitPoint, sd.N) * sd.baseColor / M_PI;
-            radiance += throughput * caustic;
-        }
-
-        // ── BRDF sample — MIS-weighted direct hit on light or env ────────────
-        // Traces the sampled direction and computes the MIS-weighted contribution
-        // if it hits an emitter or misses into the env map.  Also returns the
-        // next intersection so we avoid a redundant BVH traversal.
-        bool hitLight = false;
-        Intersection nextInter;
-        radiance += throughput * evalBRDFSample(bsdf.wi, bsdf.pdf, hitPoint, wo, sd, mat, hitLight, nextInter);
-        if (hitLight) break;
-
-        // ── Path throughput update ─────────────────────────────────────────────
-        // throughput *= f(wi,wo) * cos(theta_i) / pdf(wi)
-        // This is the standard Monte Carlo weight for the rendering equation.
-        float cosTheta = std::max(0.f, dotProduct(bsdf.wi, sd.N));
-        throughput = throughput * bsdf.f * cosTheta / bsdf.pdf;
-
-        // Clamp luminance to suppress firefly variance spikes
-        float lum = 0.2126f * throughput.x + 0.7152f * throughput.y + 0.0722f * throughput.z;
-        if (lum > 10.f) {
-            throughput = throughput * (10.f / lum);
-        }
-
-        // Reuse the intersection already computed in evalBRDFSample.
-        currentRay = Ray(hitPoint + bsdf.wi * EPSILON, bsdf.wi);
-        inter = nextInter;
-
-        // ── Russian Roulette path termination ─────────────────────────────────
-        // Terminate with probability (1 - rrProb), compensate surviving paths
-        // by dividing throughput by rrProb so the estimator stays unbiased.
-        // Clamping rrProb to RussianRoulette prevents throughput blow-up on
-        // bright paths.
         float rrProb = std::min(RussianRoulette, std::max({throughput.x, throughput.y, throughput.z}));
         if (get_random_float() > rrProb) break;
         throughput = throughput * (1.f / rrProb);
+
+        float lum = 0.2126f * throughput.x + 0.7152f * throughput.y + 0.0722f * throughput.z;
+        if (lum > 20.f) throughput = throughput * (20.f / lum);
     }
     return radiance;
 }

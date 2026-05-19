@@ -36,6 +36,19 @@ inline float get_random_float() {
     return dist(engine);
 }
 
+// inline float get_random_float() {
+//     thread_local uint32_t x = 123456789, y = 362436069, z = 521288629;
+//     uint32_t t;
+//     x ^= x << 16;
+//     x ^= x >> 5;
+//     x ^= x << 1;
+//     t = x;
+//     x = y;
+//     y = z;
+//     z = t ^ x ^ y;
+//     return (z & 0xFFFFFF) / 16777216.0f;
+// }
+
 inline void UpdateProgress(float progress) {
     int barWidth = 70;
 

@@ -18,12 +18,12 @@ int main(int argc, char **argv) {
 
     Scene scene(960, 540);
     scene.spp = 64;
-    scene.RussianRoulette = 0.95f;
+    scene.RussianRoulette = 0.8f;
     scene.maxDepth = 20;
 
     // scene.camera = Camera::fromBlender(Vector3f(4.754f, 6.913f, 4.007f), Vector3f(2.015f, -2.374f, 1.508f), 22.895f);
     scene.camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1), 40.0f);
-    // scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
+    scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
     // scene.backgroundColor = Vector3f(0);
 
     // Optional DoF — comment out for pinhole
@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
     Material *green = new Material(DIFFUSE, Vector3f(0.35f, 0.85f, 0.35f));
     Material *white = new Material(DIFFUSE, Vector3f(0.48f, 0.45f, 0.4f));
     Material *light = new Material(EMIT, Vector3f(1));
-    light->m_emission = Vector3f(10.0f);
+    light->m_emission = Vector3f(100.0f);
 
     // MeshTriangle floor("../models/cornellbox/floor.obj", Vector3f(0), white);
     // MeshTriangle shortbox("../models/cornellbox/shortbox.obj", Vector3f(0), new Material(MIRROR, Vector3f(1)));
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
 
     MeshTriangle toolbox("../models/gltf/metal_toolbox_4k.glb");
 
-    // scene.Add(&toolbox);
+    scene.Add(&toolbox);
     scene.Add(&floor);
     scene.Add(&shortbox);
     scene.Add(&tallbox);
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     scene.buildBVH();
 
     auto start = std::chrono::system_clock::now();
-    // scene.buildPhotonMaps(1e5);
+    // scene.buildPhotonMaps(1e6);
 
     Renderer r;
 

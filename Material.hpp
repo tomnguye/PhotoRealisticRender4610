@@ -64,19 +64,20 @@ public:
     //
     // Call this once per hit to resolve all textures into a flat ShadingData.
     // Caller supplies:
-    //   uv          — texture coordinates at the hit point
-    //   Ng          — geometric normal, already flipped to face the incoming ray
-    //   T           — tangent vector from mesh (or generated if mesh has no tangents)
-    //   tangentSign — w component of the glTF tangent (±1), encodes bitangent
-    //                 handedness for mirrored UVs. Pass +1 if mesh has no tangents.
+    //   uv  — texture coordinates at the hit point
+    //   Ng  — geometric normal, already flipped to face the incoming ray
+    //   T   — tangent vector from mesh (or generated if mesh has no tangents)
+    //   B   — bitangent vector from mesh
     //
     // This is the only place texture sampling happens.
     // Normal map is transformed from tangent space to world space here.
 
-    ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng, const Vector3f &T, float tangentSign) const {
+    ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng, const Vector3f &T, const Vector3f &B) const {
         ShadingData sd;
         sd.uv = uv;
         sd.Ng = Ng;
+        sd.T = T;
+        sd.B = B;
 
         // Base colour — sRGB decode handled inside TextureUtils
         sd.baseColor = TextureUtils::sampleBaseColor(baseColorTex, uv, baseColor);
@@ -86,19 +87,14 @@ public:
         sd.roughness = std::max(mr.x, 0.01f); // clamp: avoids degenerate GGX lobe
         sd.metallic = mr.y;
 
-        // Re-orthogonalise T against Ng to absorb interpolation drift, then
-        // reconstruct B with the correct handedness from the glTF tangent sign.
-        // Without tangentSign, mirrored-UV geometry gets Bn pointing the wrong
-        // way, flipping the green channel of the normal map on one side and
-        // producing a visible lighting seam down the mirror axis.
-        Vector3f Tn = normalize(T - dotProduct(T, Ng) * Ng);
-        Vector3f Bn = tangentSign * crossProduct(Ng, Tn);
-        sd.T = Tn;
-        sd.B = Bn;
-
         // Shading normal — apply normal map if present
         if (!normalTex.empty()) {
             Vector3f tn = TextureUtils::sampleNormalMap(normalTex, uv);
+
+            // Re-orthogonalise T against Ng to absorb interpolation drift
+            Vector3f Tn = normalize(T - dotProduct(T, Ng) * Ng);
+            Vector3f Bn = crossProduct(Ng, Tn);
+
             sd.N = normalize(tn.x * Tn + tn.y * Bn + tn.z * Ng);
         } else {
             sd.N = Ng;
@@ -108,12 +104,11 @@ public:
     }
 
     // Convenience: build ShadingData when the mesh has no tangents.
-    // Generates an arbitrary tangent frame from Ng; tangentSign = +1.
+    // Generates an arbitrary tangent frame from Ng.
     ShadingData buildShadingData(const Vector2f &uv, const Vector3f &Ng) const {
         Vector3f T, B;
         buildTBN(Ng, T, B);
-        // buildTBN produces a right-handed frame, so tangentSign = +1.
-        return buildShadingData(uv, Ng, T, 1.f);
+        return buildShadingData(uv, Ng, T, B);
     }
 
     // ── BRDF interface ────────────────────────────────────────────────────────
@@ -124,18 +119,6 @@ public:
     //   wi = incoming light direction  (points AWAY from surface)
     //   wo = outgoing view direction   (points AWAY from surface)
     //   N  = sd.N, already normal-mapped and in world space
-
-    // Compute the specular sampling weight from the hit-point F0.
-    // This must be identical in sample() and pdf() — any mismatch biases the
-    // estimator.  Ks is intentionally NOT used here; F0 luminance is the
-    // physically correct proxy for how much energy goes into specular.
-    static float specularSamplingWeight(const ShadingData &sd) {
-        Vector3f F0 = lerp(Vector3f(0.04f), sd.baseColor, sd.metallic);
-        // Rec. 709 luminance — scalar stand-in for the specular lobe's contribution
-        float F0lum = 0.2126f * F0.x + 0.7152f * F0.y + 0.0722f * F0.z;
-        // Clamp to [0.1, 0.9] so we always sample both lobes with some probability
-        return clamp(0.1f, 0.9f, sd.metallic + (1.f - sd.metallic) * F0lum);
-    }
 
     // Importance-sample an incoming direction wi.
     // Returns BSDFSample with wi, f, pdf, and lobe type.
@@ -196,15 +179,12 @@ inline BSDFSample Material::sample(const Vector3f &wo, const ShadingData &sd) co
     switch (m_type) {
     case DIFFUSE: {
         float alpha = sd.roughness * sd.roughness;
-        float specularWeight = specularSamplingWeight(sd);
+        float specularWeight = sd.metallic + (1.f - sd.metallic) * Ks;
         bool doSpecular = get_random_float() < specularWeight;
 
         if (doSpecular) {
-            // VNDF sample: H is guaranteed to have VdotH > 0, so reflect is safe.
-            // Explicit formula: wi = 2*(wo·H)*H - wo  (reflectDir takes an incident
-            // direction pointing INTO the surface, so passing wo directly is wrong).
-            Vector3f H = sampleGGXVNDF(wo, sd.N, alpha);
-            result.wi = normalize(2.f * dotProduct(wo, H) * H - wo);
+            Vector3f H = sampleGGX(sd.N, alpha);
+            result.wi = normalize(reflectDir(-wo, H));
             result.lobe = LOBE_SPECULAR;
         } else {
             result.wi = sampleCosineHemisphere(sd.N);
@@ -262,13 +242,12 @@ inline float Material::pdf(const Vector3f &wi, const Vector3f &wo, const Shading
         if (NdotWi <= 0.f || NdotWo <= 0.f) return 0.f;
 
         float alpha = sd.roughness * sd.roughness;
-        float specularWeight = specularSamplingWeight(sd);
+        float specularWeight = sd.metallic + (1.f - sd.metallic) * Ks;
         Vector3f H = normalize(wi + wo);
         float NdotH = std::max(0.f, dotProduct(sd.N, H));
         float VdotH = std::max(0.f, dotProduct(wo, H));
 
-        // NdotWo is NdotV — needed by the VNDF pdf (G1 term cancels the 1/NdotV pole)
-        return pdfMixed(NdotWi, NdotH, NdotWo, VdotH, alpha, specularWeight);
+        return pdfMixed(NdotWi, NdotH, VdotH, alpha, specularWeight);
     }
     default:
         return 0.f;
