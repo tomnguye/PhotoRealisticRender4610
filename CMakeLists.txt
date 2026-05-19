@@ -8,8 +8,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffast-math")
 set(SOURCES
     main.cpp
     GLTFLoader.hpp
-    loader.cpp
-    Vector.cpp
+    Vector.cpp  
     Scene.cpp
     BVH.cpp
     Renderer.cpp
