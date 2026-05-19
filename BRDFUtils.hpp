@@ -39,22 +39,51 @@ inline Vector3f sampleCosineHemisphere(const Vector3f &N) {
     return toWorld(Vector3f(r * std::cos(phi), r * std::sin(phi), std::sqrt(std::max(0.f, 1.f - r1))), N);
 }
 
-// GGX NDF importance sample — returns a microfacet half-vector H.
-// Reflect wo around H to get wi.
+// GGX Visible Normal Distribution Function (VNDF) importance sample.
+//
+// Samples the half-vector H proportional to D(H) * dot(wo, H), i.e. the
+// distribution of normals *visible* from the outgoing direction wo.  This
+// eliminates back-facing microfacet samples that NDF sampling can produce,
+// which are the primary cause of fireflies (near-zero VdotH -> exploding pdf).
+//
+// Algorithm: Heitz 2018 "Sampling the GGX Distribution of Visible Normals".
 // alpha = roughness^2  (pass pre-squared)
-// PDF = D_GGX(NdotH, alpha) * NdotH / (4 * VdotH)  (use pdfGGX below)
-inline Vector3f sampleGGX(const Vector3f &N, float alpha) {
-    float r1 = get_random_float();
-    float r2 = get_random_float();
-    float alpha2 = alpha * alpha;
+// PDF in solid angle of wi = D_GGX(NdotH)*G1(NdotV)*VdotH / (NdotV)
+//                            / (4*VdotH)  -- see pdfGGXVNDF below
+inline Vector3f sampleGGXVNDF(const Vector3f &wo, const Vector3f &N, float alpha) {
+    // Build a local frame with N as Z axis
+    Vector3f T, B;
+    buildTBN(N, T, B);
 
-    float cosTheta2 = (1.f - r1) / (r1 * (alpha2 - 1.f) + 1.f);
-    float cosTheta = std::sqrt(std::max(0.f, cosTheta2));
-    float sinTheta = std::sqrt(std::max(0.f, 1.f - cosTheta2));
-    float phi = 2.f * M_PI * r2;
+    // Transform wo into local space (z = NdotV)
+    Vector3f woLocal(dotProduct(wo, T), dotProduct(wo, B), dotProduct(wo, N));
 
-    Vector3f H = toWorld(Vector3f(sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta), N);
-    return dotProduct(H, N) < 0.f ? -H : H;
+    // Stretch wo into the hemisphere configuration
+    Vector3f woStretched = normalize(Vector3f(alpha * woLocal.x, alpha * woLocal.y, woLocal.z));
+
+    // Build an orthonormal basis around woStretched
+    Vector3f T1, T2;
+    if (woStretched.z < 0.9999f) {
+        T1 = normalize(crossProduct(Vector3f(0.f, 0.f, 1.f), woStretched));
+    } else {
+        T1 = Vector3f(1.f, 0.f, 0.f);
+    }
+    T2 = crossProduct(woStretched, T1);
+
+    // Sample a point on the unit disk, biased toward the upper hemisphere
+    float r = std::sqrt(get_random_float());
+    float phi = 2.f * M_PI * get_random_float();
+    float t1 = r * std::cos(phi);
+    float t2 = r * std::sin(phi);
+    float s = 0.5f * (1.f + woStretched.z);
+    t2 = (1.f - s) * std::sqrt(std::max(0.f, 1.f - t1 * t1)) + s * t2;
+
+    // Reproject onto hemisphere, unstretch to recover the microfacet normal
+    Vector3f Hn = t1 * T1 + t2 * T2 + std::sqrt(std::max(0.f, 1.f - t1 * t1 - t2 * t2)) * woStretched;
+    Vector3f HLocal(alpha * Hn.x, alpha * Hn.y, std::max(0.f, Hn.z));
+
+    // Transform back to world space
+    return normalize(HLocal.x * T + HLocal.y * B + HLocal.z * N);
 }
 
 // ─── BRDF terms ───────────────────────────────────────────────────────────────
@@ -75,9 +104,19 @@ inline float G1_GGX(float NdotV, float alpha) {
     return 2.f * NdotV / std::max(denom, 1e-6f);
 }
 
-// Height-correlated Smith G2 = G1(NdotV) * G1(NdotL).
+// Height-correlated Smith G2.
+//
+// The uncorrelated form G1(V)*G1(L) overestimates shadowing — the
+// height-correlated form accounts for the fact that rays hitting a tall
+// microfacet from one side are also likely to be blocked from the other.
+// This is what PBRT-v4 and Mitsuba 3 both use.
 // alpha = roughness^2
-inline float G_Smith(float NdotV, float NdotL, float alpha) { return G1_GGX(NdotV, alpha) * G1_GGX(NdotL, alpha); }
+inline float G_Smith(float NdotV, float NdotL, float alpha) {
+    float alpha2 = alpha * alpha;
+    float lambdaV = (-1.f + std::sqrt(alpha2 + (1.f - alpha2) * NdotV * NdotV)) / std::max(2.f * NdotV, 1e-6f);
+    float lambdaL = (-1.f + std::sqrt(alpha2 + (1.f - alpha2) * NdotL * NdotL)) / std::max(2.f * NdotL, 1e-6f);
+    return 1.f / (1.f + lambdaV + lambdaL);
+}
 
 // Schlick Fresnel approximation.
 // F0 = base reflectance at normal incidence.
@@ -91,15 +130,23 @@ inline Vector3f F_Schlick(float VdotH, const Vector3f &F0) {
 // PDF for a cosine-weighted hemisphere sample.
 inline float pdfCosineHemisphere(float NdotL) { return std::max(0.f, NdotL) / M_PI; }
 
-// PDF for a GGX NDF sample converted to a wi direction.
-// NdotH and VdotH come from the half-vector between wi and wo.
+// PDF for a direction wi sampled via VNDF.
+//
+// The VNDF samples H with density D(H)*G1(NdotV)*VdotH / NdotV.
+// Converting from half-vector to wi solid angle introduces the Jacobian 1/(4*VdotH),
+// giving:  pdf(wi) = D(NdotH) * G1(NdotV) / (4 * NdotV)
+//
+// This is always well-conditioned: G1 -> 0 as NdotV -> 0, killing the 1/NdotV pole,
+// and VdotH is guaranteed positive by the VNDF construction.
 // alpha = roughness^2
-inline float pdfGGX(float NdotH, float VdotH, float alpha) { return D_GGX(NdotH, alpha) * NdotH / (4.f * std::max(VdotH, 1e-4f)); }
+inline float pdfGGXVNDF(float NdotH, float NdotV, float VdotH, float alpha) {
+    return D_GGX(NdotH, alpha) * G1_GGX(NdotV, alpha) / std::max(4.f * NdotV, 1e-6f);
+}
 
-// Mixed PDF: weighted combination of diffuse and specular PDFs.
+// Mixed PDF: weighted combination of VNDF specular and cosine diffuse.
 // specularWeight = metallic + (1 - metallic) * Ks
-inline float pdfMixed(float NdotL, float NdotH, float VdotH, float alpha, float specularWeight) {
+inline float pdfMixed(float NdotL, float NdotH, float NdotV, float VdotH, float alpha, float specularWeight) {
     float pd = pdfCosineHemisphere(NdotL);
-    float ps = pdfGGX(NdotH, VdotH, alpha);
+    float ps = pdfGGXVNDF(NdotH, NdotV, VdotH, alpha);
     return specularWeight * ps + (1.f - specularWeight) * pd;
 }

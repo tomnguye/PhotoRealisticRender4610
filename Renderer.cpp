@@ -105,6 +105,9 @@ void Renderer::Render(const Scene &scene) {
 
                     Ray ray = scene.camera.generateRay(i, j, W, H, xOffset, yOffset);
                     Vector3f s = scene.castRay(ray, 0);
+                    float lum = 0.2126f * s.x + 0.7152f * s.y + 0.0722f * s.z;
+                    if (lum > 20.f) s = s * (20.f / lum);
+                    framebuffer[m] += s;
 
                     framebuffer[m] += s;
                     n++;

@@ -1,7 +1,7 @@
 #include "Renderer.hpp"
 #include "Scene.hpp"
+#include "Sphere.hpp"
 #include "Triangle.hpp"
-// #include "Sphere.hpp"
 #include "Vector.hpp"
 #include "global.hpp"
 #include <chrono>
@@ -16,19 +16,21 @@ int main(int argc, char **argv) {
     if (argc >= 2) TASK_N = (float)atof(argv[1]);
     // change the resolution for quick debugging if rendering is slow
 
-    Scene scene(256, 256);
-    scene.spp = 1024;
-    scene.RussianRoulette = 0.95;
-    scene.maxDepth = 30;
+    Scene scene(960, 540);
+    scene.spp = 64;
+    scene.RussianRoulette = 0.95f;
+    scene.maxDepth = 20;
+
+    // scene.camera = Camera::fromBlender(Vector3f(4.754f, 6.913f, 4.007f), Vector3f(2.015f, -2.374f, 1.508f), 22.895f);
     scene.camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1), 40.0f);
-    scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
+    // scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
     // scene.backgroundColor = Vector3f(0);
 
     // Optional DoF — comment out for pinhole
-    scene.camera.aperture = 0.21f; // bigger = more blur
-    scene.camera.focusDistance = 9.2981;
+    // scene.camera.aperture = 0.05f; // bigger = more blur
+    // scene.camera.focusDistance = 9.2981;
 
-    scene.build();
+    scene.camera.init(scene.width, scene.height);
 
     scene.backgroundColor = Vector3f(0.235294, 0.67451, 0.843137);
     Material *pink = new Material(DIFFUSE, Vector3f(0.75f, 0.42f, 0.42f));
@@ -37,7 +39,7 @@ int main(int argc, char **argv) {
     Material *green = new Material(DIFFUSE, Vector3f(0.35f, 0.85f, 0.35f));
     Material *white = new Material(DIFFUSE, Vector3f(0.48f, 0.45f, 0.4f));
     Material *light = new Material(EMIT, Vector3f(1));
-    light->m_emission = 50.0f;
+    light->m_emission = Vector3f(10.0f);
 
     // MeshTriangle floor("../models/cornellbox/floor.obj", Vector3f(0), white);
     // MeshTriangle shortbox("../models/cornellbox/shortbox.obj", Vector3f(0), new Material(MIRROR, Vector3f(1)));
@@ -48,16 +50,19 @@ int main(int argc, char **argv) {
     // MeshTriangle light_back("../models/cornellbox/light.obj", Vector3f(0, -5, -500), light);
 
     MeshTriangle floor("../models/gltf/floor.glb", white);
-    Material *roughMirror = new Material(DIFFUSE, Vector3f(0.95f));
+    Material *roughMirror = new Material(GLASS, Vector3f(0.95f));
     roughMirror->roughness = 0.05f;
     roughMirror->metallic = 1.0f; // full metallic — no diffuse lobe, Fresnel from F0
-    MeshTriangle shortbox("../models/gltf/shortbox.glb", roughMirror);
-    MeshTriangle tallbox("../models/gltf/tallbox.glb", roughMirror);
+    MeshTriangle shortbox("../models/gltf/shortbox.glb", white);
+    MeshTriangle tallbox("../models/gltf/tallbox.glb", white);
     MeshTriangle left("../models/gltf/left.glb", pink);
     MeshTriangle right("../models/gltf/right.glb", blue);
     MeshTriangle light_("../models/gltf/light.glb", light);
     // MeshTriangle light_back("../models/cornellbox/light.obj", light);
 
+    MeshTriangle toolbox("../models/gltf/metal_toolbox_4k.glb");
+
+    // scene.Add(&toolbox);
     scene.Add(&floor);
     scene.Add(&shortbox);
     scene.Add(&tallbox);
@@ -66,10 +71,9 @@ int main(int argc, char **argv) {
     scene.Add(&light_);
     // scene.Add(&light_back);
 
-    scene.Add(new MeshTriangle("../models/spot/spot.obj", Vector3f(0), new Material(GLASS, Vector3f(1))));
+    // scene.Add(new MeshTriangle("../models/spot/spot.obj", Vector3f(0), new Material(GLASS, Vector3f(1))));
 
-    // scene.Add(new Sphere(Vector3f(450,60,100), 60,
-    //                      new Material(GLASS, Vector3f(1))));
+    scene.Add(new Sphere(Vector3f(4.50f, 0.60f, 1.00f), 0.60f, new Material(GLASS, Vector3f(1))));
 
     // Vector3f verts[4] = {{0, 0, 0}, {552.8, 0, 0}, {549.6, 0, 559.2}, {0, 0, 559.2}};
     // Vector2f st[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
@@ -81,7 +85,7 @@ int main(int argc, char **argv) {
     scene.buildBVH();
 
     auto start = std::chrono::system_clock::now();
-    // scene.buildPhotonMaps(1e6);
+    // scene.buildPhotonMaps(1e5);
 
     Renderer r;
 

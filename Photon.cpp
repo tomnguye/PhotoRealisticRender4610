@@ -104,8 +104,9 @@ Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
 
     Vector3f irradiance = {};
     for (auto &p : nearby) {
-        float cos_theta = dotProduct(-p->direction, normal);
-        if (cos_theta > 0) irradiance += p->power * cos_theta;
+        // Only accumulate photons arriving from the front side of the surface.
+        // Power already encodes f*cos/pdf from the tracing step.
+        if (dotProduct(-p->direction, normal) > 0.f) irradiance += p->power;
     }
     return irradiance / area;
 }
@@ -120,25 +121,28 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
     if (!hit.happened || hit.material->hasEmission()) return;
 
     if (hit.material->m_type == MIRROR) {
+        Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
         p.is_caustic = true;
-        p.direction = scene.reflect(p.direction, hit.normal).normalized();
-        p.position = hit.coords + hit.normal * EPSILON;
+        p.direction = scene.reflect(p.direction, geoN).normalized();
+        p.position = hit.coords + geoN * EPSILON;
         trace(p, depth + 1, t_caustic, scene);
     } else if (hit.material->m_type == GLASS) {
         float kr = scene.fresnel(p.direction, hit.normal, hit.material->ior);
         Vector3f refracted = scene.refract(p.direction, hit.normal, hit.material->ior);
         bool tir = (refracted.norm() < EPSILON);
+        Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
 
         if (get_random_float() < kr || tir) {
-            p.power = p.power * kr;
-            p.direction = scene.reflect(p.direction, hit.normal).normalized();
-            p.position = hit.coords + hit.normal * EPSILON;
+            // Reflect — weight = 1 (sampling prob kr cancels kr in numerator)
+            p.direction = scene.reflect(p.direction, geoN).normalized();
+            p.position = hit.coords + geoN * EPSILON;
         } else {
+            // Refract — weight = 1 (sampling prob (1-kr) cancels)
             p.is_caustic = true;
-            p.power = p.power * (1.0f - kr);
             p.direction = refracted.normalized();
-            p.position = hit.coords - hit.normal * EPSILON;
+            p.position = hit.coords - geoN * EPSILON;
         }
+        p.power = p.power * hit.material->baseColor;
         trace(p, depth + 1, t_caustic, scene);
     } else { // diffuse
         if (depth > 0 && p.is_caustic) {
@@ -149,14 +153,17 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
         if (get_random_float() < survival && depth < scene.maxDepth) {
             // Build ShadingData to get baseColor and sample direction
             Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
-            ShadingData sd = hit.hasTangent ? hit.material->buildShadingData(hit.tcoords, geoN, hit.tangent,
-                                                                             hit.tangentHandedness * crossProduct(geoN, normalize(hit.tangent)))
+            ShadingData sd = hit.hasTangent ? hit.material->buildShadingData(hit.tcoords, geoN, normalize(hit.tangent), hit.tangentHandedness)
                                             : hit.material->buildShadingData(hit.tcoords, geoN);
 
             Vector3f wo = -p.direction;
             BSDFSample bsdf = hit.material->sample(wo, sd);
+            if (bsdf.pdf < 1e-6f) return;
 
-            p.power = p.power * sd.baseColor / survival;
+            float cosTheta = std::max(0.f, dotProduct(bsdf.wi, geoN));
+            Vector3f weight = bsdf.f * cosTheta / bsdf.pdf;
+
+            p.power = p.power * weight / survival;
             p.position = hit.coords + geoN * EPSILON;
             p.direction = bsdf.wi;
             trace(p, depth + 1, t_caustic, scene);

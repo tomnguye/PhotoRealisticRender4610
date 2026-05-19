@@ -20,8 +20,8 @@ public:
     int maxDepth = 30;
     float RussianRoulette = 0.95f;
     int spp = 1024;
-    float adaptiveThreshold = 0.01f;
-    float exposure = 0.18f;
+    float adaptiveThreshold = 0.05;
+    float exposure = 1.0f;
 
     Scene(int w, int h) : width(w), height(h) {}
 
@@ -40,7 +40,7 @@ public:
     void sampleLight(Intersection &pos, float &pdf) const;
     float pdfLight(const Intersection &lightInter) const;
     void buildPhotonMaps(int num_photons);
-    Vector3f shadeDiffuse(const Ray &ray, int depth) const;
+    Vector3f shadeDiffuse(const Ray &ray, const Intersection &firstInter, int depth) const;
     Vector3f shadeGlass(const Ray &ray, const Intersection &inter, int depth) const;
     Vector3f shadeMirror(const Ray &ray, const Intersection &inter, int depth) const;
     bool trace(const Ray &ray, const std::vector<Object *> &objects, float &tNear, uint32_t &index, Object **hitObject);
@@ -75,9 +75,12 @@ public:
 
         Ray shadowRay(hitPoint + toLight * EPSILON, toLight);
         Intersection shadowInter = intersect(shadowRay);
-        bool visible = shadowInter.happened && shadowInter.obj->hasEmit() && shadowInter.tnear >= dist - EPSILON;
+        bool visible = shadowInter.happened && shadowInter.obj->hasEmit() && std::abs(shadowInter.tnear - (dist - EPSILON)) < 1e-2f * dist;
 
         float pdfSolidAngle = lightPdfArea * dist * dist / std::max(cosThetaLight, 1e-4f);
+        if (cosThetaLight <= 0.f) {
+            visible = false; /* or return early */
+        }
 
         return {lightSample.material->m_emission, toLight, pdfSolidAngle, lightPdfArea, cosThetaLight, dist, visible};
     }

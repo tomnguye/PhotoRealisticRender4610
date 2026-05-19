@@ -15,8 +15,6 @@ struct Photon {
     bool is_caustic; // did this photon pass through a specular surface
 };
 
-Photon findNearestPhoton(Vector3f hitPoint);
-
 struct PhotonGrid {
     Vector3f bounds_max;
     Vector3f bounds_min;
@@ -35,7 +33,7 @@ class PhotonMap {
 public:
     std::vector<Photon> caustic_map;
     PhotonGrid caustic_grid;
-    float photon_radius = 0.005f;
+    float photon_radius = 0.15f;
 
     void emit(int num_photons, const Scene &scene);
     void build();
