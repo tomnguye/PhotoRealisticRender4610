@@ -1,3 +1,4 @@
+#include "GLTFLoader.hpp"
 #include "Scene.hpp"
 #include "Sphere.hpp"
 #include "Triangle.hpp"
@@ -18,13 +19,28 @@ Scene buildCornellBox() {
     Material *light = new Material(EMIT, Vector3f(1));
     light->m_emission = Vector3f(10.0f);
 
-    scene.Add(new MeshTriangle("../assets/models/floor.glb", white));
-    scene.Add(new MeshTriangle("../assets/models/shortbox.glb", new Material(MIRROR, Vector3f(1))));
-    scene.Add(new MeshTriangle("../assets/models/tallbox.glb", white));
-    scene.Add(new MeshTriangle("../assets/models/left.glb", pink));
-    scene.Add(new MeshTriangle("../assets/models/right.glb", blue));
-    scene.Add(new MeshTriangle("../assets/models/light.glb", light));
-    scene.Add(new MeshTriangle("../assets/models/metal_toolbox_4k.glb"));
+    for (auto *mesh : GLTFLoader::load("../assets/models/floor.glb", white))
+        scene.Add(mesh);
+
+    for (auto *mesh :
+         GLTFLoader::load("../assets/models/shortbox.glb", new Material(MIRROR, Vector3f(1))))
+        scene.Add(mesh);
+
+    for (auto *mesh : GLTFLoader::load("../assets/models/tallbox.glb", white))
+        scene.Add(mesh);
+
+    for (auto *mesh : GLTFLoader::load("../assets/models/left.glb", pink))
+        scene.Add(mesh);
+
+    for (auto *mesh : GLTFLoader::load("../assets/models/right.glb", blue))
+        scene.Add(mesh);
+
+    for (auto *mesh : GLTFLoader::load("../assets/models/light.glb", light))
+        scene.Add(mesh);
+
+    for (auto *mesh : GLTFLoader::load("../assets/models/metal_toolbox_4k.glb"))
+        scene.Add(mesh);
+
     scene.Add(new Sphere(Vector3f(4.50f, 1.0f, 1.00f), 1.0f, new Material(GLASS, Vector3f(1))));
 
     return scene;

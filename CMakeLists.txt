@@ -25,6 +25,7 @@ set(SOURCES
     Sphere.hpp
     global.hpp
     Triangle.hpp
+    Triangle.cpp
     Scene.hpp
     BVH.hpp
     Bounds3.hpp
