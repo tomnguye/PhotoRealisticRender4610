@@ -32,7 +32,6 @@ set(SOURCES
     Material.hpp
     Intersection.hpp
     Renderer.hpp
-    Texture.hpp
     TextureUtils.hpp
     BRDFUtils.hpp
     Photon.cpp

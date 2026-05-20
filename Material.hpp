@@ -1,7 +1,6 @@
 #pragma once
 
 #include "BRDFUtils.hpp"
-#include "Texture.hpp"
 #include "TextureUtils.hpp"
 #include "Vector.hpp"
 #include "global.hpp"

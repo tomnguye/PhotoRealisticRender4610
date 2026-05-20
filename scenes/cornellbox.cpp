@@ -18,18 +18,14 @@ Scene buildCornellBox() {
     Material *light = new Material(EMIT, Vector3f(1));
     light->m_emission = Vector3f(10.0f);
 
-    Material *roughMirror = new Material(GLASS, Vector3f(0.95f));
-    roughMirror->roughness = 0.05f;
-    roughMirror->metallic = 1.0f;
-
     scene.Add(new MeshTriangle("../assets/models/floor.glb", white));
-    scene.Add(new MeshTriangle("../assets/models/shortbox.glb", white));
+    scene.Add(new MeshTriangle("../assets/models/shortbox.glb", new Material(MIRROR, Vector3f(1))));
     scene.Add(new MeshTriangle("../assets/models/tallbox.glb", white));
     scene.Add(new MeshTriangle("../assets/models/left.glb", pink));
     scene.Add(new MeshTriangle("../assets/models/right.glb", blue));
     scene.Add(new MeshTriangle("../assets/models/light.glb", light));
     scene.Add(new MeshTriangle("../assets/models/metal_toolbox_4k.glb"));
-    scene.Add(new Sphere(Vector3f(4.50f, 1.0f, 1.00f), 1.0f, new Material(MIRROR, Vector3f(1))));
+    scene.Add(new Sphere(Vector3f(4.50f, 1.0f, 1.00f), 1.0f, new Material(GLASS, Vector3f(1))));
 
     return scene;
 }
