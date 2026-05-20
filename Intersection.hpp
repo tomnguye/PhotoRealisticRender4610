@@ -26,7 +26,7 @@ struct Intersection {
     Vector2f tcoords; // interpolated UVs (not raw barycentric)
     Vector3f normal;
     Vector3f tangent;        // interpolated tangent for normal mapping
-    float tangentHandedness; // glTF w component — +1 or -1, for bitangent sign
+    float tangentHandedness; // gltf w component  +1 or -1, for bitangent sign
     bool hasTangent;
     double tnear;
     Object *obj;

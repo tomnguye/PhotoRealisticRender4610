@@ -6,18 +6,18 @@
 #include "Material.hpp"
 #include "OBJ_Loader.hpp"
 #include "Object.hpp"
-#include "Triangle.hpp"
 #include <array>
 #include <cassert>
 #include <cstring>
 
 class Triangle : public Object {
 public:
-    Vector3f v0, v1, v2;                                     // vertices A, B, C counter-clockwise order
-    Vector3f e1, e2;                                         // edges v1-v0, v2-v0
-    Vector2f t0, t1, t2;                                     // per-vertex texture coords
-    Vector3f tan0, tan1, tan2;                               // per-vertex tangents (xyz only)
-    float tangentW0 = 1.f, tangentW1 = 1.f, tangentW2 = 1.f; // glTF tangent handedness (w component)
+    Vector3f v0, v1, v2;       // vertices A, B, C counter-clockwise order
+    Vector3f e1, e2;           // edges v1-v0, v2-v0
+    Vector2f t0, t1, t2;       // per-vertex texture coords
+    Vector3f tan0, tan1, tan2; // per-vertex tangents (xyz only)
+    float tangentW0 = 1.f, tangentW1 = 1.f,
+          tangentW2 = 1.f; // glTF tangent handedness (w component)
     bool hasTangents = false;
     Vector3f n0, n1, n2; // per-vertex smooth normals
     bool hasSmoothNormals = false;
@@ -25,7 +25,8 @@ public:
     float area;
     Material *m;
 
-    Triangle(Vector3f _v0, Vector3f _v1, Vector3f _v2, Material *_m = nullptr) : v0(_v0), v1(_v1), v2(_v2), m(_m) {
+    Triangle(Vector3f _v0, Vector3f _v1, Vector3f _v2, Material *_m = nullptr)
+        : v0(_v0), v1(_v1), v2(_v2), m(_m) {
         e1 = v1 - v0;
         e2 = v2 - v0;
         normal = normalize(crossProduct(e1, e2));
@@ -33,8 +34,8 @@ public:
     }
 
     Intersection getIntersection(Ray ray) override;
-    void getSurfaceProperties(const Vector3f &P, const Vector3f &I, const uint32_t &index, const Vector2f &uv, Vector3f &N,
-                              Vector2f &st) const override {
+    void getSurfaceProperties(const Vector3f &P, const Vector3f &I, const uint32_t &index,
+                              const Vector2f &uv, Vector3f &N, Vector2f &st) const override {
         N = normal;
     }
     Bounds3 getBounds() override;
@@ -50,27 +51,34 @@ public:
 
 class MeshTriangle : public Object {
 public:
-    MeshTriangle(const Vector3f *verts, const uint32_t *vertsIndex, const uint32_t &numTris, const Vector2f *st, Material *mt = new Material()) {
+    MeshTriangle(const Vector3f *verts, const uint32_t *vertsIndex, const uint32_t &numTris,
+                 const Vector2f *st, Material *mt = new Material()) {
         uint32_t maxIndex = 0;
         for (uint32_t i = 0; i < numTris * 3; ++i)
-            if (vertsIndex[i] > maxIndex) maxIndex = vertsIndex[i];
+            if (vertsIndex[i] > maxIndex)
+                maxIndex = vertsIndex[i];
         stCoordinates = std::unique_ptr<Vector2f[]>(new Vector2f[maxIndex]);
         memcpy(stCoordinates.get(), st, sizeof(Vector2f) * maxIndex);
         m = mt;
 
         Vector3f min_vert =
-            Vector3f{std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
-        Vector3f max_vert =
-            Vector3f{-std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()};
+            Vector3f{std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
+                     std::numeric_limits<float>::infinity()};
+        Vector3f max_vert = Vector3f{-std::numeric_limits<float>::infinity(),
+                                     -std::numeric_limits<float>::infinity(),
+                                     -std::numeric_limits<float>::infinity()};
         for (int i = 0; i < numTris; i++) {
             std::array<Vector3f, 3> face_vertices;
 
             for (int j = 0; j < 3; j++) {
-                auto vert = Vector3f(verts[vertsIndex[i * 3 + j]].x, verts[vertsIndex[i * 3 + j]].y, verts[vertsIndex[i * 3 + j]].z);
+                auto vert = Vector3f(verts[vertsIndex[i * 3 + j]].x, verts[vertsIndex[i * 3 + j]].y,
+                                     verts[vertsIndex[i * 3 + j]].z);
                 face_vertices[j] = vert;
 
-                min_vert = Vector3f(std::min(min_vert.x, vert.x), std::min(min_vert.y, vert.y), std::min(min_vert.z, vert.z));
-                max_vert = Vector3f(std::max(max_vert.x, vert.x), std::max(max_vert.y, vert.y), std::max(max_vert.z, vert.z));
+                min_vert = Vector3f(std::min(min_vert.x, vert.x), std::min(min_vert.y, vert.y),
+                                    std::min(min_vert.z, vert.z));
+                max_vert = Vector3f(std::max(max_vert.x, vert.x), std::max(max_vert.y, vert.y),
+                                    std::max(max_vert.z, vert.z));
             }
             Triangle *tri = new Triangle(face_vertices[0], face_vertices[1], face_vertices[2], mt);
             tri->t0 = st[vertsIndex[i * 3]];
@@ -99,19 +107,24 @@ public:
         auto mesh = loader.LoadedMeshes[0];
 
         Vector3f min_vert =
-            Vector3f{std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
-        Vector3f max_vert =
-            Vector3f{-std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()};
+            Vector3f{std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
+                     std::numeric_limits<float>::infinity()};
+        Vector3f max_vert = Vector3f{-std::numeric_limits<float>::infinity(),
+                                     -std::numeric_limits<float>::infinity(),
+                                     -std::numeric_limits<float>::infinity()};
         for (int i = 0; i < mesh.Vertices.size(); i += 3) {
             std::array<Vector3f, 3> face_vertices;
 
             for (int j = 0; j < 3; j++) {
-                auto vert = Vector3f(mesh.Vertices[i + j].Position.X + offset.x, mesh.Vertices[i + j].Position.Y + offset.y,
+                auto vert = Vector3f(mesh.Vertices[i + j].Position.X + offset.x,
+                                     mesh.Vertices[i + j].Position.Y + offset.y,
                                      mesh.Vertices[i + j].Position.Z + offset.z);
                 face_vertices[j] = vert;
 
-                min_vert = Vector3f(std::min(min_vert.x, vert.x), std::min(min_vert.y, vert.y), std::min(min_vert.z, vert.z));
-                max_vert = Vector3f(std::max(max_vert.x, vert.x), std::max(max_vert.y, vert.y), std::max(max_vert.z, vert.z));
+                min_vert = Vector3f(std::min(min_vert.x, vert.x), std::min(min_vert.y, vert.y),
+                                    std::min(min_vert.z, vert.z));
+                max_vert = Vector3f(std::max(max_vert.x, vert.x), std::max(max_vert.y, vert.y),
+                                    std::max(max_vert.z, vert.z));
             }
 
             triangles.emplace_back(face_vertices[0], face_vertices[1], face_vertices[2], mt);
@@ -148,8 +161,9 @@ private:
         tinygltf::Model model;
         tinygltf::TinyGLTF loader;
         std::string err, warn;
-        bool ok = (filename.size() >= 4 && filename.substr(filename.size() - 4) == ".glb") ? loader.LoadBinaryFromFile(&model, &err, &warn, filename)
-                                                                                           : loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+        bool ok = (filename.size() >= 4 && filename.substr(filename.size() - 4) == ".glb")
+                      ? loader.LoadBinaryFromFile(&model, &err, &warn, filename)
+                      : loader.LoadASCIIFromFile(&model, &err, &warn, filename);
         if (!ok) {
             fprintf(stderr, "[glTF] %s\n", err.c_str());
             return;
@@ -160,12 +174,19 @@ private:
 
         for (auto &mesh : model.meshes) {
             for (auto &prim : mesh.primitives) {
-                if (prim.mode != TINYGLTF_MODE_TRIANGLES) continue;
+                if (prim.mode != TINYGLTF_MODE_TRIANGLES)
+                    continue;
 
                 auto pos = tg_readFloats(model, prim.attributes.at("POSITION"));
-                auto nrm = prim.attributes.count("NORMAL") ? tg_readFloats(model, prim.attributes.at("NORMAL")) : std::vector<float>{};
-                auto uvs = prim.attributes.count("TEXCOORD_0") ? tg_readFloats(model, prim.attributes.at("TEXCOORD_0")) : std::vector<float>{};
-                auto tan = prim.attributes.count("TANGENT") ? tg_readFloats(model, prim.attributes.at("TANGENT")) : std::vector<float>{};
+                auto nrm = prim.attributes.count("NORMAL")
+                               ? tg_readFloats(model, prim.attributes.at("NORMAL"))
+                               : std::vector<float>{};
+                auto uvs = prim.attributes.count("TEXCOORD_0")
+                               ? tg_readFloats(model, prim.attributes.at("TEXCOORD_0"))
+                               : std::vector<float>{};
+                auto tan = prim.attributes.count("TANGENT")
+                               ? tg_readFloats(model, prim.attributes.at("TANGENT"))
+                               : std::vector<float>{};
                 auto idx = prim.indices >= 0 ? tg_readIndices(model, prim.indices) : [&] {
                     std::vector<uint32_t> v(pos.size() / 3);
                     std::iota(v.begin(), v.end(), 0);
@@ -183,7 +204,8 @@ private:
                     primMat->baseColor = Vector3f(bc[0], bc[1], bc[2]);
                     primMat->metallic = (float)pbr.metallicFactor;
                     primMat->roughness = (float)pbr.roughnessFactor;
-                    primMat->m_emission = Vector3f(gm.emissiveFactor[0], gm.emissiveFactor[1], gm.emissiveFactor[2]);
+                    primMat->m_emission =
+                        Vector3f(gm.emissiveFactor[0], gm.emissiveFactor[1], gm.emissiveFactor[2]);
 
                     // base colour texture (sRGB — decoded at sample time in TextureUtils)
                     int ti = pbr.baseColorTexture.index;
@@ -222,8 +244,10 @@ private:
                     }
                 }
 
-                printf("mat: roughness=%.2f metallic=%.2f hasColorTex=%d hasMRTex=%d hasNormalTex=%d\n", primMat->roughness, primMat->metallic,
-                       !primMat->baseColorTex.empty(), !primMat->metallicRoughnessTex.empty(), !primMat->normalTex.empty());
+                printf("mat: roughness=%.2f metallic=%.2f hasColorTex=%d hasMRTex=%d "
+                       "hasNormalTex=%d\n",
+                       primMat->roughness, primMat->metallic, !primMat->baseColorTex.empty(),
+                       !primMat->metallicRoughnessTex.empty(), !primMat->normalTex.empty());
 
                 for (size_t i = 0; i + 2 < idx.size(); i += 3) {
                     auto [i0, i1, i2] = std::tie(idx[i], idx[i + 1], idx[i + 2]);
@@ -233,8 +257,10 @@ private:
                     Vector3f p2(pos[i2 * 3], pos[i2 * 3 + 1], pos[i2 * 3 + 2]);
 
                     for (auto &p : {p0, p1, p2}) {
-                        min_vert = Vector3f(std::min(min_vert.x, p.x), std::min(min_vert.y, p.y), std::min(min_vert.z, p.z));
-                        max_vert = Vector3f(std::max(max_vert.x, p.x), std::max(max_vert.y, p.y), std::max(max_vert.z, p.z));
+                        min_vert = Vector3f(std::min(min_vert.x, p.x), std::min(min_vert.y, p.y),
+                                            std::min(min_vert.z, p.z));
+                        max_vert = Vector3f(std::max(max_vert.x, p.x), std::max(max_vert.y, p.y),
+                                            std::max(max_vert.z, p.z));
                     }
 
                     Triangle tri(p0, p1, p2, primMat);
@@ -282,7 +308,8 @@ private:
 public:
     Bounds3 getBounds() { return bounding_box; }
 
-    void getSurfaceProperties(const Vector3f &P, const Vector3f &I, const uint32_t &index, const Vector2f &uv, Vector3f &N, Vector2f &st) const {
+    void getSurfaceProperties(const Vector3f &P, const Vector3f &I, const uint32_t &index,
+                              const Vector2f &uv, Vector3f &N, Vector2f &st) const {
         const Vector3f &v0 = vertices[vertexIndex[index * 3]];
         const Vector3f &v1 = vertices[vertexIndex[index * 3 + 1]];
         const Vector3f &v2 = vertices[vertexIndex[index * 3 + 2]];
@@ -297,7 +324,8 @@ public:
 
     Intersection getIntersection(Ray ray) {
         Intersection intersec;
-        if (bvh) intersec = bvh->Intersect(ray);
+        if (bvh)
+            intersec = bvh->Intersect(ray);
         return intersec;
     }
 
@@ -328,19 +356,23 @@ inline Bounds3 Triangle::getBounds() { return Union(Bounds3(v0, v1), v2); }
 inline Intersection Triangle::getIntersection(Ray ray) {
     Vector3f P = crossProduct(ray.direction, e2);
     float PdotE1 = dotProduct(P, e1);
-    if (fabs(PdotE1) < 1e-6) return Intersection();
+    if (fabs(PdotE1) < 1e-6)
+        return Intersection();
 
     Vector3f T = ray.origin - v0;
     Vector3f Q = crossProduct(T, e1);
 
     float u = dotProduct(P, T) / PdotE1;
-    if (u < 0) return Intersection();
+    if (u < 0)
+        return Intersection();
 
     float v = dotProduct(Q, ray.direction) / PdotE1;
-    if (v < 0 || u + v > 1) return Intersection();
+    if (v < 0 || u + v > 1)
+        return Intersection();
 
     float t = dotProduct(Q, e2) / PdotE1;
-    if (t <= 1e-3f) return Intersection();
+    if (t <= 1e-3f)
+        return Intersection();
 
     Intersection intersection;
     intersection.happened = true;

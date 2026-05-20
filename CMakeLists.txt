@@ -4,11 +4,19 @@ project(RayTracing)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffast-math")
+set(CMAKE_BUILD_PARALLEL_LEVEL 8)
+
+# Use ccache if available
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    message(STATUS "ccache found. Using ccache.")
+endif()
 
 set(SOURCES
     main.cpp
     GLTFLoader.hpp
-    Vector.cpp  
+    GLTFLoader.cpp
     Scene.cpp
     BVH.cpp
     Renderer.cpp
@@ -43,4 +51,5 @@ else()
     message(STATUS "OpenMP not found. Compiling without OpenMP support.")
 endif()
 
+target_precompile_headers(RayTracing PRIVATE global.hpp Vector.hpp)
 target_include_directories(RayTracing PRIVATE thirdparty/tinygltf ${CMAKE_SOURCE_DIR})
