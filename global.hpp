@@ -9,7 +9,7 @@
 #undef M_PI
 #define M_PI 3.141592653589793f
 
-extern const float EPSILON;
+inline constexpr const float EPSILON = 1e-2;
 extern float TASK_N;
 const float kInfinity = std::numeric_limits<float>::max();
 

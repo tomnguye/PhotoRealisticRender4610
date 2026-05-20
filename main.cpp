@@ -15,27 +15,32 @@ float TASK_N = 2; // 1.1, 1.2, 1.3, 2
 int main(int argc, char **argv) {
     if (argc >= 2)
         TASK_N = (float)atof(argv[1]);
-    // change the resolution for quick debugging if rendering is slow
+
+    RenderSettings settings;
+    settings.width = 960;
+    settings.height = 540;
+    settings.minSPP = 64;
+    settings.maxSPP = 64;
+    settings.russianRoulette = 0.95f;
+    settings.maxDepth = 30;
+    settings.varianceThreshold = 0.05f;
+    settings.exposure = 0.18f;
+
+    // Camera camera =  Camera::fromBlender(Vector3f(4.754f, 6.913f, 4.007f), Vector3f(2.015f,
+    // -2.374f, 1.508f), 22.895f);
+    Camera camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1),
+                                   Vector3f(0, 1, 0), 40.0f);
+    camera.aperture = 0.05f; // bigger = more blur
+    camera.focusDistance = 9.2981;
+    camera.init(settings.width, settings.height);
 
     Scene scene;
-    scene.spp = 64;
-    scene.RussianRoulette = 0.8f;
-    scene.maxDepth = 20;
-
-    int width = 960;
-    int height = 540;
-
+    scene.camera = camera;
     scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
-
-    // scene.camera = Camera::fromBlender(Vector3f(4.754f, 6.913f, 4.007f), Vector3f(2.015f,
-    // -2.374f, 1.508f), 22.895f);
-    scene.camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1),
-                                  Vector3f(0, 1, 0), 40.0f);
-    scene.camera.aperture = 0.05f; // bigger = more blur
-    scene.camera.focusDistance = 9.2981;
-    scene.camera.init(width, height);
-
     scene.backgroundColor = Vector3f(0.235294, 0.67451, 0.843137);
+
+    Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
+
     Material *pink = new Material(DIFFUSE, Vector3f(0.75f, 0.42f, 0.42f));
     Material *blue = new Material(DIFFUSE, Vector3f(0.50f, 0.45f, 0.70f));
     Material *purple = new Material(DIFFUSE, Vector3f(0.73f, 0.33f, 0.83f));
@@ -94,7 +99,7 @@ int main(int argc, char **argv) {
 
     Renderer r;
 
-    r.Render(scene, width, height);
+    r.Render(scene, integrator, settings);
     auto stop = std::chrono::system_clock::now();
 
     std::cout << "Render complete: \n";

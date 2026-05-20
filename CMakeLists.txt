@@ -29,6 +29,8 @@ set(SOURCES
     BRDFUtils.hpp
     Photon.cpp
     Photon.hpp
+    Integrator.hpp
+    Integrator.cpp
 )
 
 find_package(OpenMP)

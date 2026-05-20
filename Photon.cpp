@@ -7,7 +7,8 @@
 #endif
 
 Vector3f PhotonGrid::worldToCell(Vector3f pos) const {
-    return Vector3f((int)((pos.x - bounds_min.x) / cell_size.x), (int)((pos.y - bounds_min.y) / cell_size.y),
+    return Vector3f((int)((pos.x - bounds_min.x) / cell_size.x),
+                    (int)((pos.y - bounds_min.y) / cell_size.y),
                     (int)((pos.z - bounds_min.z) / cell_size.z));
 }
 
@@ -22,7 +23,8 @@ int PhotonGrid::photonToIndex(Vector3f pos) const {
 }
 
 void PhotonGrid::build(std::vector<Photon> &photons, float radius) {
-    if (photons.empty()) return;
+    if (photons.empty())
+        return;
 
     // find bounds
     bounds_min = photons[0].position;
@@ -78,7 +80,8 @@ void PhotonGrid::query(Vector3f pos, float radius, std::vector<const Photon *> &
                 auto it = cells.find(cellToIndex(cx, cy, cz));
                 if (it != cells.end())
                     for (auto &p : it->second)
-                        if ((p.position - pos).norm() <= radius) result.push_back(&p);
+                        if ((p.position - pos).norm() <= radius)
+                            result.push_back(&p);
             }
 }
 Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
@@ -90,23 +93,27 @@ Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
 
     if ((int)nearby.size() < targetPhotons && !nearby.empty()) {
         float density = nearby.size() / (M_PI * photon_radius * photon_radius);
-        float predicted_radius = std::min(std::sqrt(targetPhotons / (density * M_PI)), photon_radius * 8.0f);
+        float predicted_radius =
+            std::min(std::sqrt(targetPhotons / (density * M_PI)), photon_radius * 8.0f);
         caustic_grid.query(pos, predicted_radius, nearby);
         radius = predicted_radius;
     } else if (nearby.empty()) {
         return {};
     }
 
-    if (nearby.empty()) return {};
+    if (nearby.empty())
+        return {};
 
     float area = M_PI * radius * radius;
-    if (area < EPSILON) return {};
+    if (area < EPSILON)
+        return {};
 
     Vector3f irradiance = {};
     for (auto &p : nearby) {
         // Only accumulate photons arriving from the front side of the surface.
         // Power already encodes f*cos/pdf from the tracing step.
-        if (dotProduct(-p->direction, normal) > 0.f) irradiance += p->power;
+        if (dotProduct(-p->direction, normal) > 0.f)
+            irradiance += p->power;
     }
     return irradiance / area;
 }
@@ -115,26 +122,28 @@ Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
 // ─────────────────────────────────────────────
 
 void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const Scene &scene) {
-    if (depth > scene.maxDepth) return;
+    if (depth > maxDepth)
+        return;
 
     auto hit = scene.intersect(Ray(p.position, p.direction));
-    if (!hit.happened || hit.material->hasEmission()) return;
+    if (!hit.happened || hit.material->hasEmission())
+        return;
 
     if (hit.material->m_type == MIRROR) {
         Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
         p.is_caustic = true;
-        p.direction = scene.reflect(p.direction, geoN).normalized();
+        p.direction = reflect(p.direction, geoN).normalized();
         p.position = hit.coords + geoN * EPSILON;
         trace(p, depth + 1, t_caustic, scene);
     } else if (hit.material->m_type == GLASS) {
-        float kr = scene.fresnel(p.direction, hit.normal, hit.material->ior);
-        Vector3f refracted = scene.refract(p.direction, hit.normal, hit.material->ior);
+        float kr = fresnel(p.direction, hit.normal, hit.material->ior);
+        Vector3f refracted = refract(p.direction, hit.normal, hit.material->ior);
         bool tir = (refracted.norm() < EPSILON);
         Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
 
         if (get_random_float() < kr || tir) {
             // Reflect — weight = 1 (sampling prob kr cancels kr in numerator)
-            p.direction = scene.reflect(p.direction, geoN).normalized();
+            p.direction = reflect(p.direction, geoN).normalized();
             p.position = hit.coords + geoN * EPSILON;
         } else {
             // Refract — weight = 1 (sampling prob (1-kr) cancels)
@@ -150,15 +159,18 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
         }
 
         float survival = std::min(1.0f, std::max({p.power.x, p.power.y, p.power.z}));
-        if (get_random_float() < survival && depth < scene.maxDepth) {
+        if (get_random_float() < survival && depth < maxDepth) {
             // Build ShadingData to get baseColor and sample direction
             Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
-            ShadingData sd = hit.hasTangent ? hit.material->buildShadingData(hit.tcoords, geoN, normalize(hit.tangent), hit.tangentHandedness)
+            ShadingData sd = hit.hasTangent ? hit.material->buildShadingData(hit.tcoords, geoN,
+                                                                             normalize(hit.tangent),
+                                                                             hit.tangentHandedness)
                                             : hit.material->buildShadingData(hit.tcoords, geoN);
 
             Vector3f wo = -p.direction;
             BSDFSample bsdf = hit.material->sample(wo, sd);
-            if (bsdf.pdf < 1e-6f) return;
+            if (bsdf.pdf < 1e-6f)
+                return;
 
             float cosTheta = std::max(0.f, dotProduct(bsdf.wi, geoN));
             Vector3f weight = bsdf.f * cosTheta / bsdf.pdf;

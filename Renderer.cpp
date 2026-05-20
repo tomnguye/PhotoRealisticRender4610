@@ -1,4 +1,5 @@
 #include "Renderer.hpp"
+#include "Integrator.hpp"
 #include "Material.hpp"
 #include "Scene.hpp"
 #include <atomic>
@@ -9,53 +10,20 @@
 #include <omp.h>
 #endif
 
-const float EPSILON = 1e-2;
-
-// ─── Welford online variance tracker ─────────────────────────────────────────
-
-struct Welford {
-    int n = 0;
-    float mean = 0.f;
-    float M2 = 0.f;
-
-    void update(float x) {
-        n++;
-        float delta = x - mean;
-        mean += delta / (float)n;
-        M2 += delta * (x - mean);
-    }
-
-    float variance() const { return n < 2 ? 0.f : M2 / (float)(n - 1); }
-
-    // 95% confidence interval as fraction of mean — stop when below threshold
-    float ci() const {
-        if (n < 2 || std::abs(mean) < 1e-6f)
-            return 1.f;
-        return 1.96f * std::sqrt(variance() / (float)n) / std::abs(mean);
-    }
-};
-
-// ─── Tile ─────────────────────────────────────────────────────────────────────
-
-struct Tile {
-    int x, y; // top-left pixel
-    int w, h; // tile dimensions (may be smaller at edges)
-};
-
 // ─── Render ───────────────────────────────────────────────────────────────────
 
-void Renderer::Render(const Scene &scene, int width, int height) {
-    const int W = width;
-    const int H = height;
+void Renderer::Render(const Scene &scene, const Integrator &integrator,
+                      const RenderSettings &settings) {
+    const int W = settings.width;
+    const int H = settings.height;
     const int totalPixels = W * H;
+    const int minSamples = settings.minSPP;
+    const int maxSamples = settings.maxSPP;
+    const float threshold = settings.varianceThreshold;
+    const float exposure = settings.exposure;
 
     std::vector<Vector3f> framebuffer(totalPixels, Vector3f(0));
     std::vector<int> sampleCount(totalPixels, 0);
-
-    // ── Adaptive sampling parameters ──────────────────────────────────────────
-    const int minSamples = 64;
-    const int maxSamples = scene.spp;
-    const float threshold = scene.adaptiveThreshold;
 
     // ── Tile setup ────────────────────────────────────────────────────────────
     // 32x32 tiles — large enough to amortise overhead, small enough for
@@ -107,7 +75,7 @@ void Renderer::Render(const Scene &scene, int width, int height) {
                     float yOffset = get_random_float();
 
                     Ray ray = scene.camera.generateRay(i, j, W, H, xOffset, yOffset);
-                    Vector3f s = scene.castRay(ray, 0);
+                    Vector3f s = integrator.castRay(ray);
 
                     framebuffer[m] += s;
                     n++;
@@ -178,7 +146,7 @@ void Renderer::Render(const Scene &scene, int width, int height) {
     FILE *fp = fopen(ss.str().c_str(), "wb");
     fprintf(fp, "P6\n%d %d\n255\n", W, H);
     for (int i = 0; i < totalPixels; i++) {
-        Vector3f c = ACESToneMap(framebuffer[i] * scene.exposure);
+        Vector3f c = ACESToneMap(framebuffer[i] * settings.exposure);
         unsigned char px[3] = {(unsigned char)(255 * linearToSRGB(c.x)),
                                (unsigned char)(255 * linearToSRGB(c.y)),
                                (unsigned char)(255 * linearToSRGB(c.z))};

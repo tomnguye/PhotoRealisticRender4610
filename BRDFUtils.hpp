@@ -211,3 +211,39 @@ inline float pdfMixed(float NdotWi, float NdotH, float WodotH, float alpha, floa
     float ps = pdfGGX(NdotH, WodotH, alpha);
     return specularWeight * ps + (1.f - specularWeight) * pd;
 }
+
+// ── Dielectric helpers ──────────────────────────────────────────────────── TODO: UPDATE DOCS
+
+static Vector3f reflect(const Vector3f &I, const Vector3f &N) {
+    return I - 2.f * dotProduct(I, N) * N;
+}
+
+static Vector3f refract(const Vector3f &I, const Vector3f &N, float ior) {
+    float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
+    float etai = 1.f, etat = ior;
+    Vector3f n = N;
+    if (cosi < 0.f) {
+        cosi = -cosi;
+    } else {
+        std::swap(etai, etat);
+        n = -N;
+    }
+    float eta = etai / etat;
+    float k = 1.f - eta * eta * (1.f - cosi * cosi);
+    return k < 0.f ? Vector3f(0) : eta * I + (eta * cosi - sqrtf(k)) * n;
+}
+
+static float fresnel(const Vector3f &I, const Vector3f &N, float ior) {
+    float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
+    float etai = 1.f, etat = ior;
+    if (cosi > 0.f)
+        std::swap(etai, etat);
+    float sint = etai / etat * sqrtf(std::max(0.f, 1.f - cosi * cosi));
+    if (sint >= 1.f)
+        return 1.f;
+    float cost = sqrtf(std::max(0.f, 1.f - sint * sint));
+    cosi = std::abs(cosi);
+    float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
+    float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+    return (Rs * Rs + Rp * Rp) * 0.5f;
+}
