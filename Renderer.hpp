@@ -1,19 +1,15 @@
 //
 // Created by goksu on 2/25/20.
 //
+#pragma once
+
 #include "Integrator.hpp"
 #include "Scene.hpp"
 
-#pragma once
-struct hit_payload {
-    float tNear;
-    uint32_t index;
-    Vector2f uv;
-    Object *hit_obj;
-};
-
-// ─── Welford online variance tracker ─────────────────────────────────────────
-
+/**
+ * @brief Welford online variance tracker.
+ * This can be used to track the variance of each pixels' value based on SPP.
+ */
 struct Welford {
     int n = 0;
     float mean = 0.f;
@@ -28,19 +24,16 @@ struct Welford {
 
     float variance() const { return n < 2 ? 0.f : M2 / (float)(n - 1); }
 
-    // 95% confidence interval as fraction of mean — stop when below threshold
+    /**
+     * @brief Calculates 95% confidence interval that true mean is within estimated mean.
+     * Can be used to determine whether a pixel's samples have converged with 95% confidence.
+     * @return 95% confidence interval as a fraction of the  mean.
+     */
     float ci() const {
         if (n < 2 || std::abs(mean) < 1e-6f)
             return 1.f;
         return 1.96f * std::sqrt(variance() / (float)n) / std::abs(mean);
     }
-};
-
-// ─── Tile ─────────────────────────────────────────────────────────────────────
-
-struct Tile {
-    int x, y; // top-left pixel
-    int w, h; // tile dimensions (may be smaller at edges)
 };
 
 struct RenderSettings {
@@ -57,6 +50,4 @@ struct RenderSettings {
 class Renderer {
 public:
     void Render(const Scene &scene, const Integrator &integrator, const RenderSettings &settings);
-
-private:
 };

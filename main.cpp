@@ -19,6 +19,7 @@ int main(int argc, char **argv) {
     settings.exposure = 0.18f;
 
     Scene scene = buildCornellBox();
+
     scene.camera.aperture = 0.05f;
     scene.camera.focusDistance = 9.2981;
     scene.camera.init(settings.width, settings.height);

@@ -6,11 +6,17 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+struct Tile {
+    int x, y; // Top-left pixel
+    int w, h; // Tile dimensions
+};
+
+const int TILE_SIZE = 32;
 
 void Renderer::Render(const Scene &scene, const Integrator &integrator,
                       const RenderSettings &settings) {
@@ -25,10 +31,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     std::vector<Vector3f> framebuffer(totalPixels, Vector3f(0));
     std::vector<int> sampleCount(totalPixels, 0);
 
-    // ── Tile setup ────────────────────────────────────────────────────────────
-    // 32x32 tiles — large enough to amortise overhead, small enough for
-    // good load balancing across threads. Adjust if needed.
-    const int TILE_SIZE = 32;
     const int tilesX = (W + TILE_SIZE - 1) / TILE_SIZE;
     const int tilesY = (H + TILE_SIZE - 1) / TILE_SIZE;
     const int totalTiles = tilesX * tilesY;
@@ -53,13 +55,8 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
 
     std::atomic<int> tilesDone(0);
 
-    // ── Render — one tile per thread iteration ────────────────────────────────
-    // schedule(dynamic,1): tiles handed to threads on demand.
-    // This is the key load balancing improvement — a thread that finishes a
-    // cheap tile (sky, background) immediately picks up the next one rather
-    // than waiting for a slow thread to finish a long scanline.
-
-#pragma omp parallel for schedule(dynamic, 1) num_threads(20)
+// We use tile based sampling to help distribute compute across threads.
+#pragma omp parallel for schedule(dynamic, 1) num_threads(omp_get_max_threads() - 1)
     for (int tileIdx = 0; tileIdx < totalTiles; tileIdx++) {
         const Tile &tile = tiles[tileIdx];
 
@@ -102,7 +99,7 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     }
     UpdateProgress(1.f);
 
-    // ── Sample count stats ────────────────────────────────────────────────────
+    // Adaptive sampling statistics.
     int totalSamples = 0;
     int minS = maxSamples, maxS = 0;
     for (int s : sampleCount) {
@@ -113,8 +110,7 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     printf("Adaptive sampling: min=%d max=%d avg=%.1f (budget=%d)\n", minS, maxS,
            (float)totalSamples / (float)totalPixels, maxSamples);
 
-    // ── Tone mapping ──────────────────────────────────────────────────────────
-
+    // ACES Tone Mapping
     auto ACESFilm = [](float x) -> float {
         const float a = 2.51f, b = 0.03f, c = 2.43f, d = 0.59f, e = 0.14f;
         return std::clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.f, 1.f);
@@ -139,8 +135,7 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
         return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.f / 2.4f) - 0.055f;
     };
 
-    // ── Write render output ───────────────────────────────────────────────────
-
+    // Save rendered image.
     std::stringstream ss;
     ss << "output.ppm";
     FILE *fp = fopen(ss.str().c_str(), "wb");
@@ -154,7 +149,7 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     }
     fclose(fp);
 
-    // ── Write sample count visualisation (white = max samples = noisiest) ─────
+    // Adaptive sampling visualisation.
     FILE *fp2 = fopen("sample_count.ppm", "wb");
     fprintf(fp2, "P6\n%d %d\n255\n", W, H);
     for (int i = 0; i < totalPixels; i++) {
