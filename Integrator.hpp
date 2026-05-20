@@ -118,7 +118,6 @@ private:
     // Fires the BRDF sample ray, returns MIS-weighted radiance contribution,
     // and hands back the next intersection so the caller avoids a second BVH
     // traversal.
-
     Vector3f evalBRDFSample(const Vector3f &wi, float brdfPdf, const Vector3f &hitPoint,
                             const Vector3f &wo, const ShadingData &sd, Material *mat,
                             bool &hitLight, Intersection &nextInter) const {

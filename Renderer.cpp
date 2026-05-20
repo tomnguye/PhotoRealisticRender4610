@@ -142,7 +142,7 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     // ── Write render output ───────────────────────────────────────────────────
 
     std::stringstream ss;
-    ss << "binary_task" << TASK_N << ".ppm";
+    ss << "output.ppm";
     FILE *fp = fopen(ss.str().c_str(), "wb");
     fprintf(fp, "P6\n%d %d\n255\n", W, H);
     for (int i = 0; i < totalPixels; i++) {

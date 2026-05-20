@@ -43,4 +43,4 @@ else()
     message(STATUS "OpenMP not found. Compiling without OpenMP support.")
 endif()
 
-target_include_directories(RayTracing PRIVATE thirdparty/tinygltf)
+target_include_directories(RayTracing PRIVATE thirdparty/tinygltf ${CMAKE_SOURCE_DIR})
