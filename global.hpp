@@ -9,11 +9,12 @@
 #undef M_PI
 #define M_PI 3.141592653589793f
 
-extern const float EPSILON;
-extern float TASK_N;
+inline constexpr const float EPSILON = 1e-2;
 const float kInfinity = std::numeric_limits<float>::max();
 
-inline float clamp(const float &lo, const float &hi, const float &v) { return std::max(lo, std::min(hi, v)); }
+inline float clamp(const float &lo, const float &hi, const float &v) {
+    return std::max(lo, std::min(hi, v));
+}
 
 inline bool solveQuadratic(const float &a, const float &b, const float &c, float &x0, float &x1) {
     float discr = b * b - 4 * a * c;
@@ -26,14 +27,26 @@ inline bool solveQuadratic(const float &a, const float &b, const float &c, float
         x0 = q / a;
         x1 = c / q;
     }
-    if (x0 > x1) std::swap(x0, x1);
+    if (x0 > x1)
+        std::swap(x0, x1);
     return true;
 }
 
 inline float get_random_float() {
-    thread_local std::mt19937 engine(std::random_device{}());
-    thread_local std::uniform_real_distribution<float> dist(0.f, 1.f);
-    return dist(engine);
+    thread_local uint64_t state = [] {
+        uint64_t s;
+        std::random_device rd;
+        s = (uint64_t)rd() << 32 | rd();
+        return s;
+    }();
+
+    // SplitMix64
+    uint64_t z = (state += 0x9E3779B97F4A7C15ULL);
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    z ^= (z >> 31);
+
+    return (z >> 40) * 0x1p-24f;
 }
 
 inline void UpdateProgress(float progress) {
