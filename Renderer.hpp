@@ -4,18 +4,16 @@
 #include "Scene.hpp"
 
 #pragma once
-struct hit_payload
-{
+struct hit_payload {
     float tNear;
     uint32_t index;
     Vector2f uv;
-    Object* hit_obj;
+    Object *hit_obj;
 };
 
-class Renderer
-{
+class Renderer {
 public:
-    void Render(const Scene& scene);
+    void Render(const Scene &scene, int width, int height);
 
 private:
 };

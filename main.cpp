@@ -17,22 +17,23 @@ int main(int argc, char **argv) {
         TASK_N = (float)atof(argv[1]);
     // change the resolution for quick debugging if rendering is slow
 
-    Scene scene(960, 540);
+    Scene scene;
     scene.spp = 64;
     scene.RussianRoulette = 0.8f;
     scene.maxDepth = 20;
 
+    int width = 960;
+    int height = 540;
+
+    scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
+
     // scene.camera = Camera::fromBlender(Vector3f(4.754f, 6.913f, 4.007f), Vector3f(2.015f,
     // -2.374f, 1.508f), 22.895f);
-    scene.camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1), 40.0f);
-    scene.envMap.load("../hdri/qwantani_dusk_2_puresky_4k.hdr");
-    // scene.backgroundColor = Vector3f(0);
-
-    // Optional DoF — comment out for pinhole
-    // scene.camera.aperture = 0.05f; // bigger = more blur
-    // scene.camera.focusDistance = 9.2981;
-
-    scene.camera.init(scene.width, scene.height);
+    scene.camera = Camera::create(Vector3f(2.78f, 2.73f, -8.0f), Vector3f(2.78f, 2.73f, 1),
+                                  Vector3f(0, 1, 0), 40.0f);
+    scene.camera.aperture = 0.05f; // bigger = more blur
+    scene.camera.focusDistance = 9.2981;
+    scene.camera.init(width, height);
 
     scene.backgroundColor = Vector3f(0.235294, 0.67451, 0.843137);
     Material *pink = new Material(DIFFUSE, Vector3f(0.75f, 0.42f, 0.42f));
@@ -93,7 +94,7 @@ int main(int argc, char **argv) {
 
     Renderer r;
 
-    r.Render(scene);
+    r.Render(scene, width, height);
     auto stop = std::chrono::system_clock::now();
 
     std::cout << "Render complete: \n";

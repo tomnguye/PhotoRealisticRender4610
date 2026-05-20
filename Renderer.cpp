@@ -29,7 +29,8 @@ struct Welford {
 
     // 95% confidence interval as fraction of mean — stop when below threshold
     float ci() const {
-        if (n < 2 || std::abs(mean) < 1e-6f) return 1.f;
+        if (n < 2 || std::abs(mean) < 1e-6f)
+            return 1.f;
         return 1.96f * std::sqrt(variance() / (float)n) / std::abs(mean);
     }
 };
@@ -43,9 +44,9 @@ struct Tile {
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 
-void Renderer::Render(const Scene &scene) {
-    const int W = scene.width;
-    const int H = scene.height;
+void Renderer::Render(const Scene &scene, int width, int height) {
+    const int W = width;
+    const int H = height;
     const int totalPixels = W * H;
 
     std::vector<Vector3f> framebuffer(totalPixels, Vector3f(0));
@@ -77,8 +78,10 @@ void Renderer::Render(const Scene &scene) {
         }
     }
 
-    std::cout << "SPP: min=" << minSamples << " max=" << maxSamples << " threshold=" << threshold << "\n";
-    std::cout << "Tiles: " << totalTiles << " (" << tilesX << "x" << tilesY << " @ " << TILE_SIZE << "px)\n";
+    std::cout << "SPP: min=" << minSamples << " max=" << maxSamples << " threshold=" << threshold
+              << "\n";
+    std::cout << "Tiles: " << totalTiles << " (" << tilesX << "x" << tilesY << " @ " << TILE_SIZE
+              << "px)\n";
 
     std::atomic<int> tilesDone(0);
 
@@ -114,7 +117,8 @@ void Renderer::Render(const Scene &scene) {
                     wB.update(s.z);
 
                     if (n >= minSamples) {
-                        if (wR.ci() < threshold && wG.ci() < threshold && wB.ci() < threshold) break;
+                        if (wR.ci() < threshold && wG.ci() < threshold && wB.ci() < threshold)
+                            break;
                     }
                 }
 
@@ -125,7 +129,8 @@ void Renderer::Render(const Scene &scene) {
 
         // Progress — updated per tile, not per pixel (much less contention)
         int done = ++tilesDone;
-        if (done % std::max(1, totalTiles / 100) == 0) UpdateProgress((float)done / (float)totalTiles);
+        if (done % std::max(1, totalTiles / 100) == 0)
+            UpdateProgress((float)done / (float)totalTiles);
     }
     UpdateProgress(1.f);
 
@@ -137,7 +142,8 @@ void Renderer::Render(const Scene &scene) {
         minS = std::min(minS, s);
         maxS = std::max(maxS, s);
     }
-    printf("Adaptive sampling: min=%d max=%d avg=%.1f (budget=%d)\n", minS, maxS, (float)totalSamples / (float)totalPixels, maxSamples);
+    printf("Adaptive sampling: min=%d max=%d avg=%.1f (budget=%d)\n", minS, maxS,
+           (float)totalSamples / (float)totalPixels, maxSamples);
 
     // ── Tone mapping ──────────────────────────────────────────────────────────
 
@@ -156,7 +162,8 @@ void Renderer::Render(const Scene &scene) {
         float ro = r * 1.60475f + g * -0.53108f + b * -0.07367f;
         float go = r * -0.10208f + g * 1.10813f + b * -0.00605f;
         float bo = r * -0.00327f + g * -0.07276f + b * 1.07602f;
-        return Vector3f(std::clamp(ro, 0.f, 1.f), std::clamp(go, 0.f, 1.f), std::clamp(bo, 0.f, 1.f));
+        return Vector3f(std::clamp(ro, 0.f, 1.f), std::clamp(go, 0.f, 1.f),
+                        std::clamp(bo, 0.f, 1.f));
     };
 
     auto linearToSRGB = [](float x) -> float {
@@ -172,7 +179,8 @@ void Renderer::Render(const Scene &scene) {
     fprintf(fp, "P6\n%d %d\n255\n", W, H);
     for (int i = 0; i < totalPixels; i++) {
         Vector3f c = ACESToneMap(framebuffer[i] * scene.exposure);
-        unsigned char px[3] = {(unsigned char)(255 * linearToSRGB(c.x)), (unsigned char)(255 * linearToSRGB(c.y)),
+        unsigned char px[3] = {(unsigned char)(255 * linearToSRGB(c.x)),
+                               (unsigned char)(255 * linearToSRGB(c.y)),
                                (unsigned char)(255 * linearToSRGB(c.z))};
         fwrite(px, 1, 3, fp);
     }
