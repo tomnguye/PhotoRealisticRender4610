@@ -30,6 +30,7 @@ set(SOURCES
     Bounds3.hpp
     Ray.hpp
     Material.hpp
+    Material.cpp
     Intersection.hpp
     Renderer.hpp
     TextureUtils.hpp
