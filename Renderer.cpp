@@ -12,8 +12,8 @@
 #endif
 
 struct Tile {
-    int x, y; // Top-left pixel
-    int w, h; // Tile dimensions
+    int x, y; // top left pixel
+    int w, h; // tile dimensions
 };
 
 const int TILE_SIZE = 32;
@@ -92,7 +92,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
             }
         }
 
-        // Progress — updated per tile, not per pixel (much less contention)
         int done = ++tilesDone;
         if (done % std::max(1, totalTiles / 100) == 0)
             UpdateProgress((float)done / (float)totalTiles);

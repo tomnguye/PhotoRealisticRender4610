@@ -117,9 +117,6 @@ Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
     }
     return irradiance / area;
 }
-// ─────────────────────────────────────────────
-//  Photon tracing
-// ─────────────────────────────────────────────
 
 void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const Scene &scene) {
     if (depth > maxDepth)

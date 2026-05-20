@@ -72,7 +72,7 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
     out->roughness = (float)pbr.roughnessFactor;
     out->m_emission = Vector3f(gm.emissiveFactor[0], gm.emissiveFactor[1], gm.emissiveFactor[2]);
 
-    // Base colour texture (sRGB — decoded at sample time in TextureUtils).
+    // Base colour texture
     int ti = pbr.baseColorTexture.index;
     if (ti >= 0 && model.textures[ti].source >= 0) {
         auto &img = model.images[model.textures[ti].source];
@@ -81,7 +81,7 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->baseColorTex.height = img.height;
     }
 
-    // Metallic-roughness texture (linear, G = roughness, B = metallic).
+    // Metallic roughness texture
     int mri = pbr.metallicRoughnessTexture.index;
     if (mri >= 0 && model.textures[mri].source >= 0) {
         auto &img = model.images[model.textures[mri].source];
@@ -90,7 +90,7 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->metallicRoughnessTex.height = img.height;
     }
 
-    // Normal map (linear, tangent space).
+    // Normal map.
     int ni = gm.normalTexture.index;
     if (ni >= 0 && model.textures[ni].source >= 0) {
         auto &img = model.images[model.textures[ni].source];
@@ -99,7 +99,7 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->normalTex.height = img.height;
     }
 
-    // Emissive texture (sRGB — decoded at sample time in TextureUtils).
+    // Emissive texture.
     int ei = gm.emissiveTexture.index;
     if (ei >= 0 && model.textures[ei].source >= 0) {
         auto &img = model.images[model.textures[ei].source];
