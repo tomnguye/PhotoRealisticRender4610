@@ -131,7 +131,7 @@ Vector3f Integrator::evalBRDFSample(const Vector3f &wi, float brdfPdf, const Vec
             return wBrdf * envL * brdf * cosTheta / brdfPdf;
         }
 
-        return Vector3f(0);
+        return scene.backgroundColor;
     }
 
     // Emissive object hit
@@ -148,7 +148,6 @@ Vector3f Integrator::evalBRDFSample(const Vector3f &wi, float brdfPdf, const Vec
 
     return Vector3f(0);
 }
-
 Vector3f Integrator::castRay(const Ray &ray) const {
     auto inter = scene.intersect(ray);
 
@@ -158,78 +157,64 @@ Vector3f Integrator::castRay(const Ray &ray) const {
         return scene.backgroundColor;
     }
 
-    if (inter.material->m_type == EMIT)
+    // hit a light directly
+    if (inter.material->isEmissive())
         return inter.material->m_emission;
 
-    Vector3f radiance(0), throughput(1);
+    Vector3f radiance(0.0f), throughput(1.0f);
     Ray currentRay = ray;
-
     bool prevWasDelta = true;
 
     for (int bounce = 0; bounce < maxDepth; bounce++) {
         if (!inter.happened) {
-            if (!scene.envMap.empty())
+            if (!scene.envMap.empty()) {
                 radiance += throughput * scene.envMap.sample(currentRay.direction);
+            } else {
+                radiance += throughput * scene.backgroundColor;
+            }
             break;
         }
 
-        if (inter.obj->hasEmit()) {
-            if (prevWasDelta) {
+        // hit a light during bounce
+        if (inter.material->isEmissive()) {
+            if (prevWasDelta)
                 radiance += throughput * inter.material->m_emission;
-            }
             break;
         }
 
         Material *mat = inter.material;
         Vector3f hitPoint = inter.coords;
-
-        // Flip geometric normal to face incoming ray.
         Vector3f geometricNormal =
-            dotProduct(currentRay.direction, inter.normal) < 0 ? inter.normal : -inter.normal;
+            dotProduct(currentRay.direction, inter.normal) < 0.0f ? inter.normal : -inter.normal;
 
-        if (mat->m_type == MIRROR) {
-            Vector3f reflDir =
-                currentRay.direction -
-                2.f * dotProduct(currentRay.direction, geometricNormal) * geometricNormal;
-            currentRay = Ray(hitPoint + reflDir * EPSILON, reflDir);
-            inter = scene.intersect(currentRay);
-            prevWasDelta = true;
-            throughput = throughput * mat->baseColor;
-        }
-
-        if (mat->m_type == GLASS) {
-            float kr = fresnel(currentRay.direction, inter.normal, mat->ior);
-            bool doReflect = get_random_float() < kr;
-
-            Vector3f nextDir;
-            if (doReflect) {
-                nextDir = reflect(currentRay.direction, geometricNormal).normalized();
-            } else {
-                nextDir = refract(currentRay.direction, inter.normal, mat->ior);
-                if (nextDir.norm() < 1e-6f) {
-                    nextDir = reflect(currentRay.direction, geometricNormal).normalized();
-                }
-            }
-
-            throughput = throughput * mat->baseColor;
-            currentRay = Ray(hitPoint + nextDir * EPSILON, nextDir);
-            inter = scene.intersect(currentRay);
-            prevWasDelta = true;
-        }
-
-        if (mat->m_type == DIFFUSE) {
-
-            // Build shading data for hit.
+        if (mat->isDelta()) {
+            // delta — just follow the sampled ray
             ShadingData sd;
-            if (inter.hasTangent) {
-                Vector3f T = normalize(inter.tangent);
-                sd = mat->buildShadingData(inter.tcoords, geometricNormal, T,
-                                           inter.tangentHandedness);
-            } else {
-                sd = mat->buildShadingData(inter.tcoords, geometricNormal);
-            }
+            sd.Ng = geometricNormal;
+            sd.N = geometricNormal;
 
-            // Use photon mapping for caustics.
+            BSDFSample bsdf = mat->sample(-currentRay.direction, sd);
+            throughput = throughput * bsdf.f;
+            currentRay = Ray(hitPoint + bsdf.wi * EPSILON, bsdf.wi);
+            inter = scene.intersect(currentRay);
+            prevWasDelta = true;
+
+        } else {
+            DiffuseMaterial *dm = static_cast<DiffuseMaterial *>(mat);
+
+            // build shading data
+            ShadingData sd =
+                inter.hasTangent
+                    ? dm->buildShadingData(inter.tcoords, geometricNormal, normalize(inter.tangent),
+                                           inter.tangentHandedness)
+                    : dm->buildShadingData(inter.tcoords, geometricNormal);
+
+            // emissive map contribution
+            Vector3f emissive = dm->evalEmissive(inter.tcoords);
+            if (emissive.norm() > EPSILON)
+                radiance += throughput * emissive;
+
+            // caustics
             if (!scene.photon_map.caustic_map.empty() && prevWasDelta) {
                 Vector3f caustic =
                     scene.photon_map.estimateIrradiance(hitPoint, sd.N) * sd.baseColor / M_PI;
@@ -237,48 +222,47 @@ Vector3f Integrator::castRay(const Ray &ray) const {
             }
             prevWasDelta = false;
 
-            Vector3f emissive = mat->evalEmissive(inter.tcoords);
-            if (emissive.norm() > EPSILON) {
-                radiance += throughput * emissive;
-                break;
-            }
-
             Vector3f wo = -currentRay.direction;
-            BSDFSample bsdf = mat->sample(wo, sd);
+            BSDFSample bsdf = dm->sample(wo, sd);
             if (bsdf.pdf < 1e-6f)
                 break;
 
-            if (scene.totalEmitArea > 0.f) {
+            // light NEE
+            if (scene.totalEmitArea > 0.0f) {
                 LightSample light = sampleDirectLight(hitPoint, sd.N);
-                radiance += throughput * evalLightSample(light, wo, sd, mat);
+                radiance += throughput * evalLightSample(light, wo, sd, dm);
             }
 
-            LightSample environmentSample = sampleEnvironmentMap(hitPoint);
-            radiance += throughput * evalEnvironmentSample(environmentSample, wo, sd, mat);
+            // env NEE
+            LightSample envSample = sampleEnvironmentMap(hitPoint);
+            radiance += throughput * evalEnvironmentSample(envSample, wo, sd, dm);
 
+            // BRDF sample
             bool hitLight = false;
             Intersection nextInter;
-            radiance += throughput * evalBRDFSample(bsdf.wi, bsdf.pdf, hitPoint, wo, sd, mat,
+            radiance += throughput * evalBRDFSample(bsdf.wi, bsdf.pdf, hitPoint, wo, sd, dm,
                                                     hitLight, nextInter);
             if (hitLight)
                 break;
 
-            float cosTheta = std::max(0.f, dotProduct(bsdf.wi, sd.N));
+            // update throughput
+            float cosTheta = std::max(0.0f, dotProduct(bsdf.wi, sd.N));
             throughput = throughput * bsdf.f * cosTheta / bsdf.pdf;
-
             currentRay = Ray(hitPoint + bsdf.wi * EPSILON, bsdf.wi);
             inter = nextInter;
         }
 
+        // russian roulette
         float rrProb = std::min(rrThreshold, std::max({throughput.x, throughput.y, throughput.z}));
         if (get_random_float() > rrProb)
             break;
-        throughput = throughput * (1.f / rrProb);
+        throughput = throughput * (1.0f / rrProb);
 
-        // Clamp throughput based on lumiance.
-        float lum = 0.2126f * throughput.x + 0.7152f * throughput.y + 0.0722f * throughput.z;
-        if (lum > 20.f)
-            throughput = throughput * (20.f / lum);
+        // clamp throughput
+        // float lum = 0.2126f * throughput.x + 0.7152f * throughput.y + 0.0722f * throughput.z;
+        // if (lum > 20.0f)
+        //     throughput = throughput * (20.0f / lum);
     }
+
     return radiance;
 }

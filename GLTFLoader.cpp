@@ -30,9 +30,9 @@ inline std::vector<float> tg_readFloats(const tinygltf::Model &m, int idx) {
             else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                 uint16_t u;
                 memcpy(&u, e + c * 2, 2);
-                v = u / 65535.f;
+                v = u / 65535.0f;
             } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
-                v = e[c] / 255.f;
+                v = e[c] / 255.0f;
             out.push_back(v);
         }
     }
@@ -62,17 +62,15 @@ inline std::vector<uint32_t> tg_readIndices(const tinygltf::Model &m, int idx) {
 }
 
 void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Material &gm,
-                              Material *out) {
+                              DiffuseMaterial *out) {
     auto &pbr = gm.pbrMetallicRoughness;
 
-    // Scalar/vector factors.
     auto &bc = pbr.baseColorFactor;
     out->baseColor = Vector3f(bc[0], bc[1], bc[2]);
     out->metallic = (float)pbr.metallicFactor;
     out->roughness = (float)pbr.roughnessFactor;
     out->m_emission = Vector3f(gm.emissiveFactor[0], gm.emissiveFactor[1], gm.emissiveFactor[2]);
 
-    // Base colour texture
     int ti = pbr.baseColorTexture.index;
     if (ti >= 0 && model.textures[ti].source >= 0) {
         auto &img = model.images[model.textures[ti].source];
@@ -81,7 +79,6 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->baseColorTex.height = img.height;
     }
 
-    // Metallic roughness texture
     int mri = pbr.metallicRoughnessTexture.index;
     if (mri >= 0 && model.textures[mri].source >= 0) {
         auto &img = model.images[model.textures[mri].source];
@@ -90,7 +87,6 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->metallicRoughnessTex.height = img.height;
     }
 
-    // Normal map.
     int ni = gm.normalTexture.index;
     if (ni >= 0 && model.textures[ni].source >= 0) {
         auto &img = model.images[model.textures[ni].source];
@@ -99,7 +95,6 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->normalTex.height = img.height;
     }
 
-    // Emissive texture.
     int ei = gm.emissiveTexture.index;
     if (ei >= 0 && model.textures[ei].source >= 0) {
         auto &img = model.images[model.textures[ei].source];
@@ -150,14 +145,18 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
                 return v;
             }();
 
-            Material *primMat = overrideMat ? overrideMat : new Material();
-            if (!overrideMat && prim.material >= 0)
-                loadMaterial(model, model.materials[prim.material], primMat);
+            Material *primMat = overrideMat;
+            if (!overrideMat) {
+                auto *dm = new DiffuseMaterial();
+                if (prim.material >= 0)
+                    loadMaterial(model, model.materials[prim.material], dm);
+                primMat = dm;
 
-            printf("[GLTFLoader] Primitive — roughness=%.2f metallic=%.2f "
-                   "hasColorTex=%d hasMRTex=%d hasNormalTex=%d\n",
-                   primMat->roughness, primMat->metallic, !primMat->baseColorTex.empty(),
-                   !primMat->metallicRoughnessTex.empty(), !primMat->normalTex.empty());
+                printf("[GLTFLoader] Primitive — roughness=%.2f metallic=%.2f "
+                       "hasColorTex=%d hasMRTex=%d hasNormalTex=%d\n",
+                       dm->roughness, dm->metallic, !dm->baseColorTex.empty(),
+                       !dm->metallicRoughnessTex.empty(), !dm->normalTex.empty());
+            }
 
             std::vector<Triangle> triangles;
             triangles.reserve(idx.size() / 3);

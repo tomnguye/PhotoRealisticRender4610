@@ -13,7 +13,6 @@ Vector3f PhotonGrid::worldToCell(Vector3f pos) const {
 }
 
 int PhotonGrid::cellToIndex(int cx, int cy, int cz) const {
-    // flatten 3D cell coords to single int key
     return cx + cy * resolution + cz * resolution * resolution;
 }
 
@@ -26,7 +25,6 @@ void PhotonGrid::build(std::vector<Photon> &photons, float radius) {
     if (photons.empty())
         return;
 
-    // find bounds
     bounds_min = photons[0].position;
     bounds_max = photons[0].position;
 
@@ -39,7 +37,6 @@ void PhotonGrid::build(std::vector<Photon> &photons, float radius) {
         bounds_max.z = std::max(bounds_max.z, p.position.z);
     }
 
-    // add small padding
     bounds_min = bounds_min - Vector3f(0.01f, 0.01f, 0.01f);
     bounds_max = bounds_max + Vector3f(0.01f, 0.01f, 0.01f);
 
@@ -47,10 +44,8 @@ void PhotonGrid::build(std::vector<Photon> &photons, float radius) {
     resolution = (int)(scene_extent.norm() / radius);
     resolution = std::max(10, std::min(200, resolution));
 
-    // compute cell size
     cell_size = (bounds_max - bounds_min) / (float)resolution;
 
-    // insert photons into cells
     for (auto &p : photons) {
         int idx = photonToIndex(p.position);
         cells[idx].push_back(p);
@@ -84,6 +79,7 @@ void PhotonGrid::query(Vector3f pos, float radius, std::vector<const Photon *> &
                             result.push_back(&p);
             }
 }
+
 Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
     const int targetPhotons = 64;
     thread_local std::vector<const Photon *> nearby;
@@ -110,9 +106,7 @@ Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
 
     Vector3f irradiance = {};
     for (auto &p : nearby) {
-        // Only accumulate photons arriving from the front side of the surface.
-        // Power already encodes f*cos/pdf from the tracing step.
-        if (dotProduct(-p->direction, normal) > 0.f)
+        if (dotProduct(-p->direction, normal) > 0.0f)
             irradiance += p->power;
     }
     return irradiance / area;
@@ -123,53 +117,46 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
         return;
 
     auto hit = scene.intersect(Ray(p.position, p.direction));
-    if (!hit.happened || hit.material->hasEmission())
+    if (!hit.happened || hit.material->isEmissive())
         return;
 
-    if (hit.material->m_type == MIRROR) {
-        Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
-        p.is_caustic = true;
-        p.direction = reflect(p.direction, geoN).normalized();
-        p.position = hit.coords + geoN * EPSILON;
-        trace(p, depth + 1, t_caustic, scene);
-    } else if (hit.material->m_type == GLASS) {
-        float kr = fresnel(p.direction, hit.normal, hit.material->ior);
-        Vector3f refracted = refract(p.direction, hit.normal, hit.material->ior);
-        bool tir = (refracted.norm() < EPSILON);
-        Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
+    Material *mat = hit.material;
+    Vector3f geoN = dotProduct(p.direction, hit.normal) < 0.0f ? hit.normal : -hit.normal;
 
-        if (get_random_float() < kr || tir) {
-            // Reflect — weight = 1 (sampling prob kr cancels kr in numerator)
-            p.direction = reflect(p.direction, geoN).normalized();
-            p.position = hit.coords + geoN * EPSILON;
-        } else {
-            // Refract — weight = 1 (sampling prob (1-kr) cancels)
-            p.is_caustic = true;
-            p.direction = refracted.normalized();
-            p.position = hit.coords - geoN * EPSILON;
-        }
-        p.power = p.power * hit.material->baseColor;
+    if (mat->isDelta()) {
+        ShadingData sd;
+        sd.Ng = geoN;
+        sd.N = geoN;
+
+        Vector3f wo = -p.direction;
+        BSDFSample bsdf = mat->sample(wo, sd);
+
+        p.is_caustic = true;
+        p.power = p.power * bsdf.f;
+        p.direction = bsdf.wi;
+        p.position = hit.coords + (dotProduct(bsdf.wi, geoN) > 0.0f ? geoN : -geoN) * EPSILON;
         trace(p, depth + 1, t_caustic, scene);
-    } else { // diffuse
-        if (depth > 0 && p.is_caustic) {
+
+    } else {
+        // diffuse — store caustic photon if eligible
+        if (depth > 0 && p.is_caustic)
             t_caustic.push_back({hit.coords, p.direction, p.power, p.is_caustic});
-        }
 
         float survival = std::min(1.0f, std::max({p.power.x, p.power.y, p.power.z}));
         if (get_random_float() < survival && depth < maxDepth) {
-            // Build ShadingData to get baseColor and sample direction
-            Vector3f geoN = dotProduct(p.direction, hit.normal) < 0 ? hit.normal : -hit.normal;
-            ShadingData sd = hit.hasTangent ? hit.material->buildShadingData(hit.tcoords, geoN,
-                                                                             normalize(hit.tangent),
-                                                                             hit.tangentHandedness)
-                                            : hit.material->buildShadingData(hit.tcoords, geoN);
+            auto *dm = static_cast<DiffuseMaterial *>(mat);
+
+            ShadingData sd = hit.hasTangent
+                                 ? dm->buildShadingData(hit.tcoords, geoN, normalize(hit.tangent),
+                                                        hit.tangentHandedness)
+                                 : dm->buildShadingData(hit.tcoords, geoN);
 
             Vector3f wo = -p.direction;
-            BSDFSample bsdf = hit.material->sample(wo, sd);
+            BSDFSample bsdf = dm->sample(wo, sd);
             if (bsdf.pdf < 1e-6f)
                 return;
 
-            float cosTheta = std::max(0.f, dotProduct(bsdf.wi, geoN));
+            float cosTheta = std::max(0.0f, dotProduct(bsdf.wi, geoN));
             Vector3f weight = bsdf.f * cosTheta / bsdf.pdf;
 
             p.power = p.power * weight / survival;
@@ -195,10 +182,8 @@ void PhotonMap::emit(int num_photons, const Scene &scene) {
         scene.sampleLight(lightPoint, light_pdf);
 
         float area = 1.0f / light_pdf;
-        // Sample emission direction from light surface
-        // Light is always emissive so we just need a cosine-weighted direction
         Vector3f dir = sampleCosineHemisphere(lightPoint.normal);
-        Vector3f power = lightPoint.material->getEmission() * area / num_photons;
+        Vector3f power = lightPoint.material->m_emission * area / num_photons;
 
         Photon p;
         p.position = lightPoint.coords + lightPoint.normal * EPSILON;
