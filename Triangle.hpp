@@ -51,7 +51,7 @@ public:
 
 class MeshTriangle : public Object {
 public:
-    MeshTriangle(const std::string &filename, Vector3f offset, Material *mt = new Material());
+    MeshTriangle(const std::string &filename, Vector3f offset, Material *mt);
 
     MeshTriangle(std::vector<Triangle> tris, Bounds3 bounds, Material *mt) {
         triangles = std::move(tris);

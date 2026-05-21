@@ -6,11 +6,12 @@
 
 class MeshTriangle;
 class Material;
+class DiffuseMaterial;
 
 class GLTFLoader {
 public:
     /**
-     * @brief Loads a gltg/glb file and returns one MeshTriangle per primitive.
+     * @brief Loads a gltf/glb file and returns one MeshTriangle per primitive.
      *
      * @param filename Path to the .gltf or .glb file.
      * @param overrideMat If non-null, all primitives use this material and glTF material data is
@@ -22,8 +23,8 @@ public:
 
 private:
     /**
-     * @brief Reads PBR textures and factors from a gltf material into a Material.
+     * @brief Reads PBR textures and factors from a gltf material into a DiffuseMaterial.
      */
     static void loadMaterial(const tinygltf::Model &model, const tinygltf::Material &gm,
-                             Material *out);
+                             DiffuseMaterial *out);
 };

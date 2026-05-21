@@ -16,7 +16,8 @@ public:
     float radius, radius2;
     Material *m;
     float area;
-    Sphere(const Vector3f &c, const float &r, Material *mt = new Material()) : center(c), radius(r), radius2(r * r), m(mt), area(4 * M_PI * r * r) {}
+    Sphere(const Vector3f &c, const float &r, Material *mt)
+        : center(c), radius(r), radius2(r * r), m(mt), area(4 * M_PI * r * r) {}
 
     Intersection getIntersection(Ray ray) {
         Intersection result;
@@ -26,9 +27,12 @@ public:
         float b = 2 * dotProduct(ray.direction, L);
         float c = dotProduct(L, L) - radius2;
         float t0, t1;
-        if (!solveQuadratic(a, b, c, t0, t1)) return result;
-        if (t0 < 0) t0 = t1;
-        if (t0 < 0) return result;
+        if (!solveQuadratic(a, b, c, t0, t1))
+            return result;
+        if (t0 < 0)
+            t0 = t1;
+        if (t0 < 0)
+            return result;
         result.happened = true;
 
         result.coords = Vector3f(ray.origin + ray.direction * t0);
@@ -38,7 +42,8 @@ public:
         result.tnear = t0;
         return result;
     }
-    void getSurfaceProperties(const Vector3f &P, const Vector3f &I, const uint32_t &index, const Vector2f &uv, Vector3f &N, Vector2f &st) const {
+    void getSurfaceProperties(const Vector3f &P, const Vector3f &I, const uint32_t &index,
+                              const Vector2f &uv, Vector3f &N, Vector2f &st) const {
         N = normalize(P - center);
     }
 
@@ -48,7 +53,8 @@ public:
     }
     void Sample(Intersection &pos, float &pdf) {
         float theta = 2.0 * M_PI * get_random_float(), phi = M_PI * get_random_float();
-        Vector3f dir(std::cos(phi), std::sin(phi) * std::cos(theta), std::sin(phi) * std::sin(theta));
+        Vector3f dir(std::cos(phi), std::sin(phi) * std::cos(theta),
+                     std::sin(phi) * std::sin(theta));
         pos.coords = center + radius * dir;
         pos.normal = dir;
         pos.obj = this;

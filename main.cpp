@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
     settings.width = 960;
     settings.height = 540;
     settings.minSPP = 64;
-    settings.maxSPP = 64;
+    settings.maxSPP = 1024;
     settings.russianRoulette = 0.95f;
     settings.maxDepth = 30;
     settings.varianceThreshold = 0.05f;
@@ -23,6 +23,8 @@ int main(int argc, char **argv) {
     scene.camera.aperture = 0.05f;
     scene.camera.focusDistance = 9.2981;
     scene.camera.init(settings.width, settings.height);
+
+    scene.backgroundColor = Vector3f(0);
 
     Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
 

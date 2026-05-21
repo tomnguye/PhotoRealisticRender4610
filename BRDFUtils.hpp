@@ -9,43 +9,6 @@ incoming ray wi points from surface -> light.
 outgoing ray wo points from surface -> camera.
 */
 
-enum LobeType {
-    LOBE_DIFFUSE = 0,
-    LOBE_SPECULAR = 1,
-    LOBE_DELTA = 2 // For perfect mirrors and glass.
-};
-
-/**
- * @brief Result obtained from sampling a BSDF.
- *
- */
-struct BSDFSample {
-    Vector3f wi;   // Sampled incoming direction. Points away from surfcae.
-    Vector3f f;    // BRDF value f(wi, wo) for this sample.
-    float pdf;     // Probability density of having selected wi
-    LobeType lobe; // The lobe that was sampled.
-};
-
-/**
- * @brief Surface state for when a ray hits a surface. Used when calling sample(), eval(), or pdf()
- * methods.
- *
- */
-struct ShadingData {
-    Vector3f Ng; // Triangle surface normal. Use this for ray offsets.
-
-    Vector3f N; // Interpolated shading normal. Use this for BSDF calculations.
-    Vector3f T; // Interpolated tangent.
-    Vector3f B; // Interpolated bitangent
-
-    Vector2f uv; // Texture coordinates at hit point
-
-    // Roughness, metallic, and baseColour may come from PBR textures from gltf files.
-    float roughness;
-    float metallic;
-    Vector3f baseColor;
-};
-
 /**
  * @brief Given a normal N, build a tangent T and bitangent B that are othornormal to N.
  *
@@ -247,3 +210,38 @@ static float fresnel(const Vector3f &I, const Vector3f &N, float ior) {
     float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
     return (Rs * Rs + Rp * Rp) * 0.5f;
 }
+
+// static Vector3f reflectDir(const Vector3f &I, const Vector3f &N) {
+//     return I - 2.f * dotProduct(I, N) * N;
+// }
+
+// static Vector3f refractDir(const Vector3f &I, const Vector3f &N, float ior_) {
+//     float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
+//     float etai = 1.f, etat = ior_;
+//     Vector3f n = N;
+//     if (cosi < 0.f) {
+//         cosi = -cosi;
+//     } else {
+//         std::swap(etai, etat);
+//         n = -N;
+//     }
+//     float eta = etai / etat;
+//     float k = 1.f - eta * eta * (1.f - cosi * cosi);
+//     return k < 0.f ? Vector3f(0) : eta * I + (eta * cosi - sqrtf(k)) * n;
+// }
+
+// Returns reflectance kr. Transmittance = 1 - kr.
+// static float fresnelDielectric(const Vector3f &I, const Vector3f &N, float ior_) {
+//     float cosi = clamp(-1.f, 1.f, dotProduct(I, N));
+//     float etai = 1.f, etat = ior_;
+//     if (cosi > 0.f)
+//         std::swap(etai, etat);
+//     float sint = etai / etat * sqrtf(std::max(0.f, 1.f - cosi * cosi));
+//     if (sint >= 1.f)
+//         return 1.f;
+//     float cost = sqrtf(std::max(0.f, 1.f - sint * sint));
+//     cosi = std::abs(cosi);
+//     float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
+//     float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+//     return (Rs * Rs + Rp * Rp) * 0.5f;
+// }
