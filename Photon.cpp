@@ -79,35 +79,16 @@ void PhotonGrid::query(Vector3f pos, float radius, std::vector<const Photon *> &
                             result.push_back(&p);
             }
 }
-
 Vector3f PhotonMap::estimateIrradiance(Vector3f pos, Vector3f normal) const {
-    const int targetPhotons = 64;
-    thread_local std::vector<const Photon *> nearby;
-
+    thread_local std::vector<const Photon*> nearby;
     caustic_grid.query(pos, photon_radius, nearby);
-    float radius = photon_radius;
+    if (nearby.empty()) return {};
 
-    if ((int)nearby.size() < targetPhotons && !nearby.empty()) {
-        float density = nearby.size() / (M_PI * photon_radius * photon_radius);
-        float predicted_radius =
-            std::min(std::sqrt(targetPhotons / (density * M_PI)), photon_radius * 8.0f);
-        caustic_grid.query(pos, predicted_radius, nearby);
-        radius = predicted_radius;
-    } else if (nearby.empty()) {
-        return {};
-    }
-
-    if (nearby.empty())
-        return {};
-
-    float area = M_PI * radius * radius;
-    if (area < EPSILON)
-        return {};
-
+    float area = M_PI * photon_radius * photon_radius;
     Vector3f irradiance = {};
-    for (auto &p : nearby) {
-        if (dotProduct(-p->direction, normal) > 0.0f)
-            irradiance += p->power;
+    for (auto& p : nearby) {
+        Vector3f power = p->power;
+        irradiance += power;
     }
     return irradiance / area;
 }
@@ -139,8 +120,9 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
 
     } else {
         // diffuse — store caustic photon if eligible
-        if (depth > 0 && p.is_caustic)
+        if (depth > 0 && p.is_caustic) {
             t_caustic.push_back({hit.coords, p.direction, p.power, p.is_caustic});
+        }
 
         float survival = std::min(1.0f, std::max({p.power.x, p.power.y, p.power.z}));
         if (get_random_float() < survival && depth < maxDepth) {
@@ -158,8 +140,12 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
 
             float cosTheta = std::max(0.0f, dotProduct(bsdf.wi, geoN));
             Vector3f weight = bsdf.f * cosTheta / bsdf.pdf;
+            p.power = p.power * weight;
 
-            p.power = p.power * weight / survival;
+            // then RR based on new power
+            float survival = std::min(1.0f, std::max({p.power.x, p.power.y, p.power.z}));
+            if (get_random_float() > survival) return;
+            p.power = p.power / survival;
             p.position = hit.coords + geoN * EPSILON;
             p.direction = bsdf.wi;
             trace(p, depth + 1, t_caustic, scene);
@@ -168,7 +154,7 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
 }
 
 void PhotonMap::emit(int num_photons, const Scene &scene) {
-    const int num_threads = 8;
+    const int num_threads = omp_get_max_threads() - 1;
     std::vector<std::vector<Photon>> thread_caustic(num_threads);
     for (auto &v : thread_caustic)
         v.reserve(num_photons / num_threads / 10);
@@ -184,7 +170,6 @@ void PhotonMap::emit(int num_photons, const Scene &scene) {
         float area = 1.0f / light_pdf;
         Vector3f dir = sampleCosineHemisphere(lightPoint.normal);
         Vector3f power = lightPoint.material->m_emission * area / num_photons;
-
         Photon p;
         p.position = lightPoint.coords + lightPoint.normal * EPSILON;
         p.direction = dir;

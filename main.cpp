@@ -11,8 +11,8 @@ int main(int argc, char **argv) {
     RenderSettings settings;
     settings.width = 960;
     settings.height = 540;
-    settings.minSPP = 64;
-    settings.maxSPP = 1024;
+    settings.minSPP = 16;
+    settings.maxSPP = 64;
     settings.russianRoulette = 0.95f;
     settings.maxDepth = 30;
     settings.varianceThreshold = 0.05f;
@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
     auto start = std::chrono::system_clock::now();
 
     scene.buildBVH();
-    // scene.buildPhotonMaps(1e6);
+    scene.buildPhotonMaps(1e6);
 
     Renderer r;
 

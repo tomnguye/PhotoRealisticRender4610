@@ -22,7 +22,7 @@ Scene buildCornellBox() {
     white->baseColor = Vector3f(0.78f, 0.78f, 0.78f);
 
     auto *light = new EmissiveMaterial();
-    light->m_emission = Vector3f(10.0f);
+    light->m_emission = Vector3f(100.0f);
 
     auto *mirror = new MirrorMaterial();
     mirror->baseColor = Vector3f(1.0f);
@@ -30,16 +30,16 @@ Scene buildCornellBox() {
     auto *glass = new GlassMaterial();
     glass->baseColor = Vector3f(1.0f);
 
-    // for (auto *mesh : GLTFLoader::load("../assets/models/floor.glb", white))
-    //     scene.Add(mesh);
+    for (auto *mesh : GLTFLoader::load("../assets/models/floor.glb", white))
+        scene.Add(mesh);
     for (auto *mesh : GLTFLoader::load("../assets/models/shortbox.glb", mirror))
         scene.Add(mesh);
     for (auto *mesh : GLTFLoader::load("../assets/models/tallbox.glb", white))
         scene.Add(mesh);
-    // for (auto *mesh : GLTFLoader::load("../assets/models/left.glb", pink))
-    //     scene.Add(mesh);
-    // for (auto *mesh : GLTFLoader::load("../assets/models/right.glb", blue))
-    //     scene.Add(mesh);
+    for (auto *mesh : GLTFLoader::load("../assets/models/left.glb", pink))
+        scene.Add(mesh);
+    for (auto *mesh : GLTFLoader::load("../assets/models/right.glb", blue))
+        scene.Add(mesh);
     for (auto *mesh : GLTFLoader::load("../assets/models/light.glb", light))
         scene.Add(mesh);
     for (auto *mesh : GLTFLoader::load("../assets/models/metal_toolbox_4k.glb"))

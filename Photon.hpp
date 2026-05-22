@@ -33,7 +33,7 @@ class PhotonMap {
 public:
     std::vector<Photon> caustic_map;
     PhotonGrid caustic_grid;
-    float photon_radius = 0.15f;
+    float photon_radius = 0.01f;
     int maxDepth = 30;
 
     void emit(int num_photons, const Scene &scene);
