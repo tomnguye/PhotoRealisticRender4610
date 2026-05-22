@@ -58,7 +58,9 @@ struct EnvMap {
     /**
      * @brief Returns true if no environment map has been loaded.
      */
-    bool empty() const { return !loaded; }
+    bool empty() const {
+        return !loaded;
+    }
 
     /**
      * @brief Converts a world space direction to equirectangular UV coordinates.
@@ -99,7 +101,7 @@ struct EnvMap {
         Vector2f uv = dirToUV(dir);
         float px = std::max(0.f, uv.x * (width - 1));
         float py = std::max(0.f, uv.y * (height - 1));
-        int x0 = (int)px, y0 = (int)py;
+        int x0 = (int) px, y0 = (int) py;
         int x1 = std::min(x0 + 1, width - 1);
         int y1 = std::min(y0 + 1, height - 1);
         float fx = px - x0, fy = py - y0;
@@ -121,13 +123,12 @@ struct EnvMap {
      */
     float importanceSamplePdf(const Vector3f &dir) const {
         Vector2f uv = dirToUV(dir);
-        int col = std::min((int)(uv.x * width), width - 1);
-        int row = std::min((int)(uv.y * height), height - 1);
+        int col = std::min((int) (uv.x * width), width - 1);
+        int row = std::min((int) (uv.y * height), height - 1);
         float theta = uv.y * M_PI;
         float sinT = std::max(1e-4f, std::sin(theta));
         float lum = luminance(pixels[row * width + col]);
-        return (lum / (totalLuminance + 1e-6f)) *
-               ((float)(width * height) / (2.f * M_PI * M_PI * sinT));
+        return (lum / (totalLuminance + 1e-6f)) * ((float) (width * height) / (2.f * M_PI * M_PI));
     }
 
     /**
@@ -144,30 +145,29 @@ struct EnvMap {
         float r1 = get_random_float();
         float r2 = get_random_float();
 
-        int row = (int)(std::lower_bound(marginalCdf.begin(), marginalCdf.end(), r1) -
-                        marginalCdf.begin());
+        int row = (int) (std::lower_bound(marginalCdf.begin(), marginalCdf.end(), r1) -
+                         marginalCdf.begin());
         row = std::min(row, height - 1);
 
         auto rowBegin = cdf.begin() + row * width;
         auto rowEnd = rowBegin + width;
-        int col = (int)(std::lower_bound(rowBegin, rowEnd, r2) - rowBegin);
+        int col = (int) (std::lower_bound(rowBegin, rowEnd, r2) - rowBegin);
         col = std::min(col, width - 1);
 
-        float u = (col + 0.5f) / (float)width;
-        float v = (row + 0.5f) / (float)height;
+        float u = (col + 0.5f) / (float) width;
+        float v = (row + 0.5f) / (float) height;
         Vector3f dir = uvToDir(u, v);
 
         float theta = v * M_PI;
         float sinT = std::max(1e-4f, std::sin(theta));
         float lum = luminance(pixels[row * width + col]);
-        pdf = (lum / (totalLuminance + 1e-6f)) *
-              ((float)(width * height) / (2.f * M_PI * M_PI * sinT));
+        pdf = (lum / (totalLuminance + 1e-6f)) * ((float) (width * height) / (2.f * M_PI * M_PI));
         pdf = std::max(1e-6f, pdf);
 
         return dir;
     }
 
-private:
+  private:
     /**
      * @brief Returns the luminance of a linear RGB colour using Rec. 709 coefficients.
      *
@@ -192,7 +192,7 @@ private:
         std::vector<float> rowSums(height, 0.f);
 
         for (int row = 0; row < height; row++) {
-            float theta = (row + 0.5f) / (float)height * M_PI;
+            float theta = (row + 0.5f) / (float) height * M_PI;
             float sinT = std::sin(theta);
 
             float rowSum = 0.f;
