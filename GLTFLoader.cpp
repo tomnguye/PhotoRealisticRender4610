@@ -67,8 +67,8 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
 
     auto &bc = pbr.baseColorFactor;
     out->baseColor = Vector3f(bc[0], bc[1], bc[2]);
-    out->metallic = (float)pbr.metallicFactor;
-    out->roughness = (float)pbr.roughnessFactor;
+    out->metallic = (float) pbr.metallicFactor;
+    out->roughness = (float) pbr.roughnessFactor;
     out->m_emission = Vector3f(gm.emissiveFactor[0], gm.emissiveFactor[1], gm.emissiveFactor[2]);
 
     int ti = pbr.baseColorTexture.index;
@@ -77,6 +77,7 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->baseColorTex.data = img.image;
         out->baseColorTex.width = img.width;
         out->baseColorTex.height = img.height;
+        out->baseColorTex.channels = img.component;
     }
 
     int mri = pbr.metallicRoughnessTexture.index;
@@ -90,9 +91,20 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
     int ni = gm.normalTexture.index;
     if (ni >= 0 && model.textures[ni].source >= 0) {
         auto &img = model.images[model.textures[ni].source];
-        out->normalTex.data = img.image;
         out->normalTex.width = img.width;
         out->normalTex.height = img.height;
+        out->normalTex.channels = img.component;
+
+        if (img.bits == 16) {
+            // 16-bit: each channel is 2 bytes, reinterpret as uint16 and downscale
+            const uint16_t *src = reinterpret_cast<const uint16_t *>(img.image.data());
+            size_t npixels = img.width * img.height * img.component;
+            out->normalTex.data.resize(npixels);
+            for (size_t j = 0; j < npixels; ++j)
+                out->normalTex.data[j] = src[j] >> 8; // 16-bit -> 8-bit
+        } else {
+            out->normalTex.data = img.image;
+        }
     }
 
     int ei = gm.emissiveTexture.index;
@@ -104,7 +116,8 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
     }
 }
 
-std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Material *overrideMat) {
+std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, MaterialType matType,
+                                             Material *overrideMat) {
     printf("[GLTFLoader] Loading: %s\n", filename.c_str());
 
     tinygltf::Model model;
@@ -147,15 +160,41 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
 
             Material *primMat = overrideMat;
             if (!overrideMat) {
+                // Create the right material type, but always load textures into a DiffuseMaterial
+                // first
                 auto *dm = new DiffuseMaterial();
                 if (prim.material >= 0)
                     loadMaterial(model, model.materials[prim.material], dm);
-                primMat = dm;
 
-                printf("[GLTFLoader] Primitive — roughness=%.2f metallic=%.2f "
+                printf("[GLTFLoader] Primitive mat=%s roughness=%.2f metallic=%.2f "
                        "hasColorTex=%d hasMRTex=%d hasNormalTex=%d\n",
+                       matType == MaterialType::Glass    ? "glass"
+                       : matType == MaterialType::Mirror ? "mirror"
+                                                         : "diffuse",
                        dm->roughness, dm->metallic, !dm->baseColorTex.empty(),
                        !dm->metallicRoughnessTex.empty(), !dm->normalTex.empty());
+
+                if (matType == MaterialType::Glass) {
+                    auto *gm = new GlassMaterial();
+                    // Copy all texture/shading data from dm
+                    gm->baseColor = dm->baseColor;
+                    gm->m_emission = dm->m_emission;
+                    gm->baseColorTex = dm->baseColorTex;
+                    gm->normalTex = dm->normalTex;
+                    gm->metallicRoughnessTex = dm->metallicRoughnessTex;
+                    gm->emissiveTex = dm->emissiveTex;
+                    delete dm;
+                    primMat = gm;
+                } else if (matType == MaterialType::Mirror) {
+                    auto *mm = new MirrorMaterial();
+                    mm->baseColor = dm->baseColor;
+                    mm->m_emission = dm->m_emission;
+                    mm->emissiveTex = dm->emissiveTex;
+                    delete dm;
+                    primMat = mm;
+                } else {
+                    primMat = dm; // Diffuse, keep as-is
+                }
             }
 
             std::vector<Triangle> triangles;

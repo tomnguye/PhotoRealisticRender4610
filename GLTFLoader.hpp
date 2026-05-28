@@ -8,8 +8,12 @@ class MeshTriangle;
 class Material;
 class DiffuseMaterial;
 
+enum class MaterialType { Diffuse, Glass, Mirror };
+
+// Change load() signature:
+
 class GLTFLoader {
-public:
+  public:
     /**
      * @brief Loads a gltf/glb file and returns one MeshTriangle per primitive.
      *
@@ -18,10 +22,10 @@ public:
      * ignored.
      * @return Vector of heap-allocated MeshTriangle objects. Caller owns them.
      */
-    static std::vector<MeshTriangle *> load(const std::string &filename,
+    static std::vector<MeshTriangle *> load(const std::string &filename, MaterialType matType,
                                             Material *overrideMat = nullptr);
 
-private:
+  private:
     /**
      * @brief Reads PBR textures and factors from a gltf material into a DiffuseMaterial.
      */

@@ -43,6 +43,7 @@
 build/
 Build/
 build-*/
+.clang-format
 
 # CMake generated files
 src/CMakeFiles/
@@ -51,6 +52,8 @@ src/cmake_install.cmake
 src/Makefile
 src/install_manifest.txt 
 src/compile_commands.json
+
+CMakeSettings.json
 
 # Temporary files
 *.tmp 
@@ -69,6 +72,7 @@ Testing/
 .cache/
 
 .vscode/
+.vs/
 .history/
 
 build/
@@ -113,3 +117,4 @@ coverage/
 .git/
 
 # media/
+assets/

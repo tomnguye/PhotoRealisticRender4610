@@ -9,7 +9,7 @@
 #undef M_PI
 #define M_PI 3.141592653589793f
 
-inline constexpr const float EPSILON = 1e-2;
+inline constexpr const float EPSILON = 1e-6;
 const float kInfinity = std::numeric_limits<float>::max();
 
 inline float clamp(const float &lo, const float &hi, const float &v) {
@@ -36,7 +36,7 @@ inline float get_random_float() {
     thread_local uint64_t state = [] {
         uint64_t s;
         std::random_device rd;
-        s = (uint64_t)rd() << 32 | rd();
+        s = (uint64_t) rd() << 32 | rd();
         return s;
     }();
 

@@ -1,4 +1,4 @@
-
 GGX STUFF.
 Microfacet Models for Refraction through Rough Surfaces https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf
 Christophe Schlick — "An Inexpensive BRDF Model for Physically-based Rendering" (1994)
+Simple Nested Dielectrics in Ray Traced Images [Schmidt and Budge 2002] 

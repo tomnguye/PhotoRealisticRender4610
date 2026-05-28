@@ -4,34 +4,45 @@
 #include "Triangle.hpp"
 #include "Vector.hpp"
 #include "global.hpp"
-#include "scenes/cornellbox.cpp"
+// #include "scenes/cornellbox.cpp"
+// #include "scenes/test.cpp"
+#include "scenes/museum_final.cpp"
 #include <chrono>
 
 int main(int argc, char **argv) {
     RenderSettings settings;
-    settings.width = 960;
-    settings.height = 540;
-    settings.minSPP = 16;
+    settings.width = 1920 / 2;
+    settings.height = 1080 / 2;
+    settings.minSPP = 1;
     settings.maxSPP = 64;
     settings.russianRoulette = 0.95f;
-    settings.maxDepth = 30;
-    settings.varianceThreshold = 0.05f;
-    settings.exposure = 0.18f;
+    settings.maxDepth = 12;
+    settings.varianceThreshold = 0.01f;
+    settings.exposure = 1.0f;
 
-    Scene scene = buildCornellBox();
+    Scene scene = buildScene();
 
-    scene.camera.aperture = 0.05f;
-    scene.camera.focusDistance = 9.2981;
+    // scene.camera.aperture = 0.003;
     scene.camera.init(settings.width, settings.height);
+    printf("forward: (%.3f, %.3f, %.3f)\n", scene.camera.forward.x, scene.camera.forward.y,
+           scene.camera.forward.z);
+    printf("right:   (%.3f, %.3f, %.3f)\n", scene.camera.right.x, scene.camera.right.y,
+           scene.camera.right.z);
+    printf("camUp:   (%.3f, %.3f, %.3f)\n", scene.camera.camUp.x, scene.camera.camUp.y,
+           scene.camera.camUp.z);
 
-    scene.backgroundColor = Vector3f(0);
+    scene.backgroundColor = Vector3f(10.0f);
+    scene.medium.sigma_t = -1;
+    // scene.medium = Medium::dust();
+    // scene.medium.bounded = true;
+    // scene.medium.bounds = Bounds3(Vector3f(-10.0f, -5.0f, -10.0f), Vector3f(10.0f, 5.0f, 10.0f));
 
     Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
 
     auto start = std::chrono::system_clock::now();
 
     scene.buildBVH();
-    scene.buildPhotonMaps(1e6);
+    // scene.buildPhotonMaps(1e6);
 
     Renderer r;
 

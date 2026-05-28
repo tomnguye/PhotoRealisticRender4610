@@ -18,11 +18,13 @@ struct Welford {
     void update(float x) {
         n++;
         float delta = x - mean;
-        mean += delta / (float)n;
+        mean += delta / (float) n;
         M2 += delta * (x - mean);
     }
 
-    float variance() const { return n < 2 ? 0.f : M2 / (float)(n - 1); }
+    float variance() const {
+        return n < 2 ? 0.f : M2 / (float) (n - 1);
+    }
 
     /**
      * @brief Calculates 95% confidence interval that true mean is within estimated mean.
@@ -32,7 +34,7 @@ struct Welford {
     float ci() const {
         if (n < 2 || std::abs(mean) < 1e-6f)
             return 1.f;
-        return 1.96f * std::sqrt(variance() / (float)n) / std::abs(mean);
+        return 1.96f * std::sqrt(variance() / (float) n) / std::abs(mean);
     }
 };
 
@@ -48,6 +50,6 @@ struct RenderSettings {
 };
 
 class Renderer {
-public:
+  public:
     void Render(const Scene &scene, const Integrator &integrator, const RenderSettings &settings);
 };

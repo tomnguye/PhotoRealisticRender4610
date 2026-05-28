@@ -9,7 +9,7 @@ Scene buildCornellBox() {
                                    Vector3f(0, 1, 0), 40.0f);
     Scene scene;
     scene.camera = camera;
-    scene.envMap.load("../assets/hdri/qwantani_dusk_2_puresky_4k.hdr");
+    // scene.envMap.load("../assets/hdri/qwantani_dusk_2_puresky_4k.hdr");
     scene.backgroundColor = Vector3f(0.235294, 0.67451, 0.843137);
 
     auto *pink = new DiffuseMaterial();

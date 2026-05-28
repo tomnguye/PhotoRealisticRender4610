@@ -15,6 +15,8 @@ struct LightSample {
 class Integrator {
 
 public:
+    float directClamp = 0.f;
+    float indirectClamp = 5.0f;
     Integrator(const Scene &scene_, int maxDepth_, float rrThreshold_)
         : scene(scene_), maxDepth(maxDepth_), rrThreshold(rrThreshold_) {}
 
@@ -32,7 +34,7 @@ private:
                              Material *mat) const;
 
     LightSample sampleEnvironmentMap(const Vector3f &hitpoint) const;
-    Vector3f evalEnvironmentSample(const LightSample sample, const Vector3f &wo,
+    Vector3f evalEnvironmentSample(const LightSample &sample, const Vector3f &wo,
                                    const ShadingData &sd, Material *mat) const;
 
     Vector3f evalBRDFSample(const Vector3f &wi, float brdfPdf, const Vector3f &hitPoint,
