@@ -16,6 +16,7 @@ class Scene {
   public:
     Vector3f backgroundColor = Vector3f(0.235294, 0.67451, 0.843137);
     std::vector<Object *> objects;
+    std::vector<Object *> emissives; // cached subset of objects that hasEmit()
     BVHAccel *bvh;
     EnvMap envMap;
     Camera camera;

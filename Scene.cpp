@@ -17,9 +17,13 @@ void Scene::buildBVH() {
     this->bvh = new BVHAccel(objects, 1, BVHAccel::SplitMethod::SAH);
 
     totalEmitArea = 0.f;
-    for (auto obj : objects)
-        if (obj->hasEmit())
+    emissives.clear();
+    for (auto obj : objects) {
+        if (obj->hasEmit()) {
+            emissives.push_back(obj);
             totalEmitArea += obj->getArea();
+        }
+    }
 }
 
 Intersection Scene::intersect(const Ray &ray) const {
@@ -35,16 +39,21 @@ void Scene::sampleLight(Intersection &pos, float &pdf) const {
         return;
     float p = get_random_float() * totalEmitArea;
     float area_accum = 0;
-    for (auto &obj : objects) {
-        if (obj->hasEmit()) {
+    for (auto &obj : emissives) {
+        area_accum += obj->getArea();
+        if (p <= area_accum) {
+            obj->Sample(pos, pdf);
+            pdf = 1.0f / totalEmitArea;
             pos.happened = true;
-            area_accum += obj->getArea();
-            if (p <= area_accum) {
-                obj->Sample(pos, pdf);
-                pdf = 1.0f / totalEmitArea;
-                break;
-            }
+            return;
         }
+    }
+    // Fallback: floating point edge case put p just above totalEmitArea.
+    // Sample the last emissive.
+    if (!emissives.empty()) {
+        emissives.back()->Sample(pos, pdf);
+        pdf = 1.0f / totalEmitArea;
+        pos.happened = true;
     }
 }
 

@@ -12,7 +12,7 @@ MeshTriangle::MeshTriangle(const std::string &filename, Vector3f offset, Materia
     Vector3f minVert(std::numeric_limits<float>::infinity());
     Vector3f maxVert(-std::numeric_limits<float>::infinity());
 
-    for (int i = 0; i < (int)mesh.Vertices.size(); i += 3) {
+    for (int i = 0; i < (int) mesh.Vertices.size(); i += 3) {
         std::array<Vector3f, 3> face;
         for (int j = 0; j < 3; j++) {
             auto vert = Vector3f(mesh.Vertices[i + j].Position.X + offset.x,
@@ -31,32 +31,12 @@ MeshTriangle::MeshTriangle(const std::string &filename, Vector3f offset, Materia
     buildBVH();
 }
 
-Intersection Triangle::getIntersection(Ray ray) {
-    Vector3f P = crossProduct(ray.direction, e2);
-    float PdotE1 = dotProduct(P, e1);
-    if (fabs(PdotE1) < 1e-6)
-        return Intersection();
-
-    Vector3f T = ray.origin - v0;
-    Vector3f Q = crossProduct(T, e1);
-
-    float u = dotProduct(P, T) / PdotE1;
-    if (u < 0)
-        return Intersection();
-
-    float v = dotProduct(Q, ray.direction) / PdotE1;
-    if (v < 0 || u + v > 1)
-        return Intersection();
-
-    float t = dotProduct(Q, e2) / PdotE1;
-    if (t <= 1e-3f)
-        return Intersection();
-
+Intersection Triangle::finalize(const Ray &ray, float t, float u, float v) const {
     Intersection inter;
     inter.happened = true;
     inter.coords = ray.origin + t * ray.direction;
     inter.tnear = t;
-    inter.obj = this;
+    inter.obj = const_cast<Triangle *>(this);
     inter.material = m;
 
     float w0 = 1.f - u - v;
@@ -76,4 +56,14 @@ Intersection Triangle::getIntersection(Ray ray) {
     }
 
     return inter;
+}
+
+Intersection Triangle::getIntersection(Ray ray) {
+    // Thin wrapper: cheap test, then finalize the hit once. Kept for any caller
+    // that wants a full Intersection directly; the hot BVH loop calls hitTest()
+    // and finalize() separately so it only finalizes the closest triangle.
+    TriHit h = hitTest(ray);
+    if (!h.happened)
+        return Intersection();
+    return finalize(ray, h.t, h.u, h.v);
 }

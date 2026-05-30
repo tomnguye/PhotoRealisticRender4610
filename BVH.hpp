@@ -16,10 +16,16 @@
 //   left  child = nodes[first_child]
 //   right child = nodes[first_child + 1]
 //
-// Leaf:     primitive_count > 0
+// Leaf:     primCount() > 0
 //           first_child = index into orderedPrims[]
-// Interior: primitive_count == 0
+// Interior: primCount() == 0
 //           first_child = index of left child in nodes[]
+//
+// `meta` packs the primitive count (low 24 bits) and the split axis (high 8
+// bits). maxPrimsInNode is capped at 255, so 24 bits is far more than enough
+// for the count. Per-node surface area (needed only by light sampling, never
+// by ray traversal) lives in a separate parallel array so it does not bloat
+// the hot traversal node — that is what gets us back to 32 bytes.
 //
 // Bounds are stored interleaved as [minX,maxX, minY,maxY, minZ,maxZ].
 // This lets the ray-octant trick select the near/far slab per axis with
@@ -28,11 +34,25 @@
 struct BVHNode {
     float bounds[6];
     uint32_t first_child;
-    uint32_t primitive_count;
-    float area;
+    uint32_t meta; // [31:24] = splitAxis, [23:0] = primitive count
+
+    static constexpr uint32_t COUNT_MASK = 0x00FFFFFFu;
+
+    uint32_t primitive_count() const {
+        return meta & COUNT_MASK;
+    }
+    uint8_t splitAxis() const {
+        return (uint8_t) (meta >> 24);
+    }
+    void setLeaf(uint32_t count) {
+        meta = count & COUNT_MASK; // splitAxis bits left zero; unused in leaves
+    }
+    void setInterior(uint8_t axis) {
+        meta = ((uint32_t) axis << 24); // count == 0 marks interior
+    }
 
     bool isLeaf() const {
-        return primitive_count > 0;
+        return (meta & COUNT_MASK) > 0;
     }
 
     void setBounds(const Bounds3 &b) {
@@ -44,8 +64,7 @@ struct BVHNode {
         bounds[5] = b.pMax.z;
     }
 };
-// 36 bytes now, update the assert:
-static_assert(sizeof(BVHNode) == 36, "BVHNode must be 36 bytes");
+static_assert(sizeof(BVHNode) == 32, "BVHNode must be 32 bytes");
 
 // ---------------------------------------------------------------------------
 // Temporary build node — only alive during construction, then discarded.
@@ -80,17 +99,19 @@ class BVHAccel {
     BuildNode *root = nullptr;
 
   private:
+    // Per-axis layout so nodeIntersect reads contiguous memory.
     struct RayData {
-        float invDir[3];
         float org[3];
-        int octant[3]; // 0 or 1: selects near/far bound per axis
+        float invDir[3];
+        int octant[3]; // 0 = +dir, 1 = -dir; selects near/far slab index
     };
 
     BuildNode *recursiveBuild(std::vector<Object *> &prims, int start, int end);
     uint32_t flatten(BuildNode *node, uint32_t *offset);
     RayData precompute(const Ray &ray) const;
 
-    // Returns tMin of slab intersection, or +inf on miss.
+    // Slab test. bounds layout: [minX,maxX, minY,maxY, minZ,maxZ].
+    // octant[a]==0 means ray goes +axis so bounds[a*2] is the near slab.
     inline float nodeIntersect(const BVHNode &node, const RayData &rd) const {
         float tMin = 0.f, tMax = std::numeric_limits<float>::infinity();
         for (int a = 0; a < 3; a++) {
@@ -108,8 +129,18 @@ class BVHAccel {
     std::vector<Object *> primitives;
     std::vector<Object *> orderedPrims;
     std::vector<BVHNode> nodes;
+    // Per-node surface area, parallel to nodes[]. Only the light-sampling
+    // traversal (getSample) reads this; keeping it out of BVHNode keeps the
+    // hot ray-traversal node at 32 bytes.
+    std::vector<float> nodeAreas;
     std::vector<BuildNode> buildPool;
 
     void getSample(BuildNode *node, float p, Intersection &pos, float &pdf);
     float totalArea = 0.f;
+
+    // True when every primitive in this BVH is a leaf Triangle, enabling the
+    // deferred-attribute fast path in Intersect(). False for the scene-level
+    // BVH whose primitives are MeshTriangle aggregates, which must go through
+    // the general getIntersection() path.
+    bool leavesAreTriangles = false;
 };
