@@ -2,6 +2,7 @@
 
 #include "Vector.hpp"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <vector>
 
@@ -23,24 +24,26 @@ inline void uvToTexel(float u, float v, int width, int height, int &x0, int &y0,
     u = u - std::floor(u);
     v = v - std::floor(v);
 
-    float px = u * (width - 1);
-    float py = v * (height - 1);
+    float px = u * width;
+    float py = v * height;
 
-    x0 = (int) px;
-    y0 = (int) py;
-    x1 = std::min(x0 + 1, width - 1);
-    y1 = std::min(y0 + 1, height - 1);
-    fx = px - x0;
-    fy = py - y0;
+    x0 = (int) px % width;
+    y0 = (int) py % height;
+    x1 = (x0 + 1) % width;
+    y1 = (y0 + 1) % height;
+    fx = px - std::floor(px);
+    fy = py - std::floor(py);
 }
 
 inline Vector3f fetchRGB(const Texture &tex, int x, int y) {
-    int i = (y * tex.width + x) * tex.channels; // use actual channels
+    assert(tex.channels >= 3);
+    int i = (y * tex.width + x) * tex.channels;
     return Vector3f(tex.data[i] / 255.f, tex.data[i + 1] / 255.f, tex.data[i + 2] / 255.f);
 }
 
 inline float fetchChannel(const Texture &tex, int x, int y, int channel) {
-    int i = (y * tex.width + x) * 4;
+    assert(channel < tex.channels);
+    int i = (y * tex.width + x) * tex.channels;
     return tex.data[i + channel] / 255.f;
 }
 
@@ -90,7 +93,7 @@ inline Vector3f sampleNormalMap(const Texture &tex, const Vector2f &uv) {
     uvToTexel(uv.x, uv.y, tex.width, tex.height, x0, y0, x1, y1, fx, fy);
 
     auto fetch = [&](int x, int y) -> Vector3f {
-        int i = (y * tex.width + x) * 4;
+        int i = (y * tex.width + x) * tex.channels;
         return Vector3f(tex.data[i] / 255.f * 2.f - 1.f, tex.data[i + 1] / 255.f * 2.f - 1.f,
                         tex.data[i + 2] / 255.f * 2.f - 1.f);
     };
@@ -104,12 +107,14 @@ inline Vector2f sampleMetallicRoughness(const Texture &tex, const Vector2f &uv,
     if (tex.empty())
         return Vector2f(fallbackRoughness, fallbackMetallic);
 
+    assert(tex.channels >= 3);
+
     int x0, y0, x1, y1;
     float fx, fy;
     uvToTexel(uv.x, uv.y, tex.width, tex.height, x0, y0, x1, y1, fx, fy);
 
     auto fetch = [&](int x, int y) -> Vector2f {
-        int i = (y * tex.width + x) * 4;
+        int i = (y * tex.width + x) * tex.channels;
         return Vector2f(tex.data[i + 1] / 255.f,  // G = roughness
                         tex.data[i + 2] / 255.f); // B = metallic
     };

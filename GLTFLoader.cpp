@@ -78,6 +78,16 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->baseColorTex.width = img.width;
         out->baseColorTex.height = img.height;
         out->baseColorTex.channels = img.component;
+        if (img.bits == 16) {
+            // 16-bit: each channel is 2 bytes, reinterpret as uint16 and downscale
+            const uint16_t *src = reinterpret_cast<const uint16_t *>(img.image.data());
+            size_t npixels = img.width * img.height * img.component;
+            out->baseColorTex.data.resize(npixels);
+            for (size_t j = 0; j < npixels; ++j)
+                out->baseColorTex.data[j] = src[j] >> 8; // 16-bit -> 8-bit
+        } else {
+            out->baseColorTex.data = img.image;
+        }
     }
 
     int mri = pbr.metallicRoughnessTexture.index;
@@ -86,6 +96,17 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->metallicRoughnessTex.data = img.image;
         out->metallicRoughnessTex.width = img.width;
         out->metallicRoughnessTex.height = img.height;
+        out->metallicRoughnessTex.channels = img.component;
+        if (img.bits == 16) {
+            // 16-bit: each channel is 2 bytes, reinterpret as uint16 and downscale
+            const uint16_t *src = reinterpret_cast<const uint16_t *>(img.image.data());
+            size_t npixels = img.width * img.height * img.component;
+            out->metallicRoughnessTex.data.resize(npixels);
+            for (size_t j = 0; j < npixels; ++j)
+                out->metallicRoughnessTex.data[j] = src[j] >> 8; // 16-bit -> 8-bit
+        } else {
+            out->metallicRoughnessTex.data = img.image;
+        }
     }
 
     int ni = gm.normalTexture.index;
@@ -192,6 +213,11 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
                     mm->emissiveTex = dm->emissiveTex;
                     delete dm;
                     primMat = mm;
+                } else if (matType == MaterialType::Emit) {
+                    auto *em = new EmissiveMaterial();
+                    em->m_emission = em->m_emission;
+                    delete dm;
+                    primMat = em;
                 } else {
                     primMat = dm; // Diffuse, keep as-is
                 }

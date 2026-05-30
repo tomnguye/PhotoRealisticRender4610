@@ -8,7 +8,7 @@ class MeshTriangle;
 class Material;
 class DiffuseMaterial;
 
-enum class MaterialType { Diffuse, Glass, Mirror };
+enum class MaterialType { Diffuse, Glass, Mirror, Emit };
 
 // Change load() signature:
 

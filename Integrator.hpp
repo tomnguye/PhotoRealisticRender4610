@@ -5,31 +5,31 @@
 #include "Scene.hpp"
 #include "Vector.hpp"
 
-struct LightSample
-{
+struct LightSample {
     Vector3f emission;
     Vector3f dir;
     float pdf; // Solid angle PDF
     bool visible;
 };
 
-class Integrator
-{
+class Integrator {
 
-public:
+  public:
     float directClamp = 0.f;
-    float indirectClamp = 20.0f;
+    float indirectClamp = 10.0f;
     Integrator(const Scene &scene_, int maxDepth_, float rrThreshold_)
         : scene(scene_), maxDepth(maxDepth_), rrThreshold(rrThreshold_) {}
 
     Vector3f castRay(const Ray &ray) const;
 
-private:
+  private:
     const Scene &scene;
     int maxDepth;
     float rrThreshold;
 
-    inline float mis(float a, float b) const { return (a * a) / (a * a + b * b + 1e-6f); }
+    inline float mis(float a, float b) const {
+        return (a * a) / (a * a + b * b + 1e-6f);
+    }
 
     LightSample sampleDirectLight(const Vector3f &hitPoint, const Vector3f &N) const;
     Vector3f evalLightSample(const LightSample &light, const Vector3f &wo, const ShadingData &sd,

@@ -2,19 +2,18 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <numeric>
 #include <limits>
+#include <numeric>
 
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
-BVHAccel::BVHAccel(std::vector<Object*> p, int maxPrimsInNode, SplitMethod splitMethod)
-    : maxPrimsInNode(std::min(255, maxPrimsInNode))
-    , splitMethod(splitMethod)
-    , primitives(std::move(p))
-{
-    if (primitives.empty()) return;
+BVHAccel::BVHAccel(std::vector<Object *> p, int maxPrimsInNode, SplitMethod splitMethod)
+    : maxPrimsInNode(std::min(255, maxPrimsInNode)), splitMethod(splitMethod),
+      primitives(std::move(p)) {
+    if (primitives.empty())
+        return;
 
     time_t start, stop;
     time(&start);
@@ -25,8 +24,8 @@ BVHAccel::BVHAccel(std::vector<Object*> p, int maxPrimsInNode, SplitMethod split
     orderedPrims.reserve(primitives.size());
 
     // Work on a mutable copy so we can nth_element / partition in place.
-    std::vector<Object*> work = primitives;
-    root = recursiveBuild(work, 0, (int)work.size());
+    std::vector<Object *> work = primitives;
+    root = recursiveBuild(work, 0, (int) work.size());
 
     // Flatten the pointer tree into the cache-friendly flat array.
     // Two children are always adjacent so they share a cache line.
@@ -42,9 +41,8 @@ BVHAccel::BVHAccel(std::vector<Object*> p, int maxPrimsInNode, SplitMethod split
 
     time(&stop);
     double diff = difftime(stop, start);
-    printf("BVH built: %d nodes, %zu prims — %ih %im %is\n",
-        (int)nodes.size(), primitives.size(),
-        (int)diff / 3600, ((int)diff / 60) % 60, (int)diff % 60);
+    printf("BVH built: %d nodes, %zu prims — %ih %im %is\n", (int) nodes.size(), primitives.size(),
+           (int) diff / 3600, ((int) diff / 60) % 60, (int) diff % 60);
 }
 
 // ---------------------------------------------------------------------------
@@ -57,10 +55,9 @@ BVHAccel::BVHAccel(std::vector<Object*> p, int maxPrimsInNode, SplitMethod split
 //   - nth_element (O(n)) replaces full sort (O(n log n)) for naive split
 //   - orderedPrims filled in leaf order for contiguous leaf prim ranges
 // ---------------------------------------------------------------------------
-BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int end)
-{
+BuildNode *BVHAccel::recursiveBuild(std::vector<Object *> &prims, int start, int end) {
     buildPool.emplace_back();
-    BuildNode* node = &buildPool.back();
+    BuildNode *node = &buildPool.back();
 
     const int count = end - start;
 
@@ -72,7 +69,7 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
 
     // --- Leaf ---
     if (count == 1) {
-        node->primOffset = (int)orderedPrims.size();
+        node->primOffset = (int) orderedPrims.size();
         node->primCount = 1;
         node->object = prims[start];
         node->area = prims[start]->getArea();
@@ -93,7 +90,7 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
     if (centBounds.pMax[axis] == centBounds.pMin[axis]) {
         // Force a leaf if small enough, otherwise just median-split.
         if (count <= maxPrimsInNode) {
-            node->primOffset = (int)orderedPrims.size();
+            node->primOffset = (int) orderedPrims.size();
             node->primCount = count;
             node->area = 0.f;
             for (int i = start; i < end; i++) {
@@ -103,8 +100,7 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
             return node;
         }
         // else fall through with mid already set to median
-    }
-    else if (splitMethod == SplitMethod::SAH && count > 4) {
+    } else if (splitMethod == SplitMethod::SAH && count > 4) {
         // -----------------------------------------------------------------
         // Binned SAH: try all 3 axes, pick the globally best split.
         //
@@ -114,33 +110,38 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
         // -----------------------------------------------------------------
         constexpr int N_BUCKETS = 12;
 
-        struct Bucket { int count = 0; Bounds3 bounds; };
+        struct Bucket {
+            int count = 0;
+            Bounds3 bounds;
+        };
 
         float bestCost = std::numeric_limits<float>::infinity();
-        int   bestAxis = axis;
-        int   bestSplit = N_BUCKETS / 2;
+        int bestAxis = axis;
+        int bestSplit = N_BUCKETS / 2;
         const float parentArea = bounds.SurfaceArea();
 
         for (int a = 0; a < 3; a++) {
             float lo = centBounds.pMin[a];
             float hi = centBounds.pMax[a];
-            if (lo == hi) continue;
+            if (lo == hi)
+                continue;
 
             Bucket buckets[N_BUCKETS];
             const float span = hi - lo;
 
             for (int i = start; i < end; i++) {
                 float c = prims[i]->getBounds().Centroid()[a];
-                int b = std::clamp((int)(N_BUCKETS * (c - lo) / span), 0, N_BUCKETS - 1);
+                int b = std::clamp((int) (N_BUCKETS * (c - lo) / span), 0, N_BUCKETS - 1);
                 buckets[b].count++;
                 buckets[b].bounds = Union(buckets[b].bounds, prims[i]->getBounds());
             }
 
             // Prefix scan: left side cumulative area + count.
             float leftArea[N_BUCKETS - 1];
-            int   leftCount[N_BUCKETS - 1];
+            int leftCount[N_BUCKETS - 1];
             {
-                Bounds3 bL; int cL = 0;
+                Bounds3 bL;
+                int cL = 0;
                 for (int i = 0; i < N_BUCKETS - 1; i++) {
                     bL = Union(bL, buckets[i].bounds);
                     cL += buckets[i].count;
@@ -151,9 +152,10 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
 
             // Suffix scan: right side.
             float rightArea[N_BUCKETS - 1];
-            int   rightCount[N_BUCKETS - 1];
+            int rightCount[N_BUCKETS - 1];
             {
-                Bounds3 bR; int cR = 0;
+                Bounds3 bR;
+                int cR = 0;
                 for (int i = N_BUCKETS - 2; i >= 0; i--) {
                     bR = Union(bR, buckets[i + 1].bounds);
                     cR += buckets[i + 1].count;
@@ -163,9 +165,10 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
             }
 
             for (int i = 0; i < N_BUCKETS - 1; i++) {
-                if (leftCount[i] == 0 || rightCount[i] == 0) continue;
-                float cost = 1.f + (leftCount[i] * leftArea[i] +
-                    rightCount[i] * rightArea[i]) / parentArea;
+                if (leftCount[i] == 0 || rightCount[i] == 0)
+                    continue;
+                float cost =
+                    1.f + (leftCount[i] * leftArea[i] + rightCount[i] * rightArea[i]) / parentArea;
                 if (cost < bestCost) {
                     bestCost = cost;
                     bestAxis = a;
@@ -179,25 +182,23 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
         float span = centBounds.pMax[bestAxis] - lo;
         float edge = lo + (bestSplit + 1) * span / N_BUCKETS;
 
-        Object** midPtr = std::partition(
-            prims.data() + start, prims.data() + end,
-            [bestAxis, edge](Object* o) {
+        Object **midPtr =
+            std::partition(prims.data() + start, prims.data() + end, [bestAxis, edge](Object *o) {
                 return o->getBounds().Centroid()[bestAxis] < edge;
             });
 
-        mid = (int)(midPtr - prims.data());
+        mid = (int) (midPtr - prims.data());
 
         // Guard: partition can be degenerate for very flat geometry.
         if (mid == start || mid == end)
             mid = (start + end) / 2;
-    }
-    else {
+    } else {
         // Naive: nth_element on longest axis — O(n), not O(n log n).
-        std::nth_element(
-            prims.data() + start, prims.data() + mid, prims.data() + end,
-            [axis](Object* a, Object* b) {
-                return a->getBounds().Centroid()[axis] < b->getBounds().Centroid()[axis];
-            });
+        std::nth_element(prims.data() + start, prims.data() + mid, prims.data() + end,
+                         [axis](Object *a, Object *b) {
+                             return a->getBounds().Centroid()[axis] <
+                                    b->getBounds().Centroid()[axis];
+                         });
     }
 
     node->children[0] = recursiveBuild(prims, start, mid);
@@ -211,23 +212,20 @@ BuildNode* BVHAccel::recursiveBuild(std::vector<Object*>& prims, int start, int 
 // Left child is always at (parentIndex + 1) so it costs nothing to reach.
 // Right child index is stored in first_child for interior nodes.
 // ---------------------------------------------------------------------------
-uint32_t BVHAccel::flatten(BuildNode* node, uint32_t* offset)
-{
-    BVHNode& ln = nodes[*offset];
+uint32_t BVHAccel::flatten(BuildNode *node, uint32_t *offset) {
+    BVHNode &ln = nodes[*offset];
     ln.setBounds(node->bounds);
+    ln.area = node->area;
 
     uint32_t myOffset = (*offset)++;
 
     if (node->primCount > 0) {
-        // Leaf
-        ln.first_child = (uint32_t)node->primOffset;
-        ln.primitive_count = (uint32_t)node->primCount;
-    }
-    else {
-        // Interior: left child immediately follows, store right child offset.
+        ln.first_child = (uint32_t) node->primOffset;
+        ln.primitive_count = (uint32_t) node->primCount;
+    } else {
         ln.primitive_count = 0;
-        flatten(node->children[0], offset);                         // left: myOffset+1
-        ln.first_child = flatten(node->children[1], offset);        // right: stored here
+        flatten(node->children[0], offset);
+        ln.first_child = flatten(node->children[1], offset);
     }
 
     return myOffset;
@@ -241,8 +239,7 @@ uint32_t BVHAccel::flatten(BuildNode* node, uint32_t* offset)
 // (the min bound) is the far slab — which lets us avoid a branch inside
 // the hot box test loop.
 // ---------------------------------------------------------------------------
-BVHAccel::RayData BVHAccel::precompute(const Ray& ray) const
-{
+BVHAccel::RayData BVHAccel::precompute(const Ray &ray) const {
     RayData rd;
     for (int a = 0; a < 3; a++) {
         float d = ray.direction[a];
@@ -264,20 +261,20 @@ BVHAccel::RayData BVHAccel::precompute(const Ray& ray) const
 // enters first (near child), push the far child. This maximises early
 // exits via the closestT guard.
 // ---------------------------------------------------------------------------
-Intersection BVHAccel::Intersect(const Ray& ray) const
-{
+Intersection BVHAccel::Intersect(const Ray &ray) const {
     Intersection result;
-    if (nodes.empty()) return result;
+    if (nodes.empty())
+        return result;
 
     const RayData rd = precompute(ray);
 
     uint32_t stack[64];
-    int      stackPtr = 0;
+    int stackPtr = 0;
     uint32_t nodeIdx = 0;
-    float    closestT = std::numeric_limits<float>::infinity();
+    float closestT = std::numeric_limits<float>::infinity();
 
     while (true) {
-        const BVHNode& node = nodes[nodeIdx];
+        const BVHNode &node = nodes[nodeIdx];
 
         float tBox = nodeIntersect(node, rd);
 
@@ -291,8 +288,7 @@ Intersection BVHAccel::Intersect(const Ray& ray) const
                         result = tmp;
                     }
                 }
-            }
-            else {
+            } else {
                 // Determine near/far child by ray direction on split axis.
                 // The split axis is encoded in the node bounds ordering —
                 // we derive it from which axis had the largest extent at
@@ -313,19 +309,21 @@ Intersection BVHAccel::Intersect(const Ray& ray) const
 
                 // Push far child first (so near is on top of stack).
                 if (tLeft <= tRight) {
-                    if (tRight < closestT) stack[stackPtr++] = right;
+                    if (tRight < closestT)
+                        stack[stackPtr++] = right;
                     nodeIdx = left;
                     continue;
-                }
-                else {
-                    if (tLeft < closestT) stack[stackPtr++] = left;
+                } else {
+                    if (tLeft < closestT)
+                        stack[stackPtr++] = left;
                     nodeIdx = right;
                     continue;
                 }
             }
         }
 
-        if (stackPtr == 0) break;
+        if (stackPtr == 0)
+            break;
         nodeIdx = stack[--stackPtr];
     }
 
@@ -336,35 +334,36 @@ Intersection BVHAccel::Intersect(const Ray& ray) const
 // IntersectP — shadow ray. Returns true on first hit, skips the rest.
 // Identical traversal loop but exits immediately on any primitive hit.
 // ---------------------------------------------------------------------------
-bool BVHAccel::IntersectP(const Ray& ray) const
-{
-    if (nodes.empty()) return false;
+bool BVHAccel::IntersectP(const Ray &ray, float tMaxDist) const {
+    if (nodes.empty())
+        return false;
 
     const RayData rd = precompute(ray);
 
     uint32_t stack[64];
-    int      stackPtr = 0;
+    int stackPtr = 0;
     uint32_t nodeIdx = 0;
 
     while (true) {
-        const BVHNode& node = nodes[nodeIdx];
+        const BVHNode &node = nodes[nodeIdx];
 
-        if (nodeIntersect(node, rd) < std::numeric_limits<float>::infinity()) {
+        float tBox = nodeIntersect(node, rd);
+        if (tBox < tMaxDist) {
             if (node.isLeaf()) {
                 for (uint32_t i = 0; i < node.primitive_count; i++) {
-                    if (orderedPrims[node.first_child + i]->getIntersection(ray).happened)
-                        return true;  // early exit — don't care which hit
+                    Intersection tmp = orderedPrims[node.first_child + i]->getIntersection(ray);
+                    if (tmp.happened && tmp.tnear < tMaxDist)
+                        return true;
                 }
-            }
-            else {
-                // No need for ordered traversal for shadow rays — just push both.
-                stack[stackPtr++] = node.first_child;       // right child
-                nodeIdx = nodeIdx + 1;                      // left child
+            } else {
+                stack[stackPtr++] = node.first_child;
+                nodeIdx = nodeIdx + 1;
                 continue;
             }
         }
 
-        if (stackPtr == 0) break;
+        if (stackPtr == 0)
+            break;
         nodeIdx = stack[--stackPtr];
     }
 
@@ -374,22 +373,41 @@ bool BVHAccel::IntersectP(const Ray& ray) const
 // ---------------------------------------------------------------------------
 // Light sampling — unchanged logic from original, uses build tree.
 // ---------------------------------------------------------------------------
-void BVHAccel::getSample(BuildNode* node, float p, Intersection& pos, float& pdf)
-{
-    if (!node->children[0] && !node->children[1]) {
-        node->object->Sample(pos, pdf);
-        pdf *= node->area;
-        return;
+void BVHAccel::getSample(BuildNode * /*node*/, float p, Intersection &pos, float &pdf) {
+    uint32_t nodeIdx = 0;
+
+    while (true) {
+        const BVHNode &node = nodes[nodeIdx];
+
+        if (node.isLeaf()) {
+            // Pick a random primitive weighted by area within the leaf.
+            // For maxPrimsInNode==1 this is just the one primitive.
+            for (uint32_t i = 0; i < node.primitive_count; i++) {
+                Object *obj = orderedPrims[node.first_child + i];
+                p -= obj->getArea();
+                if (p <= 0.f || i == node.primitive_count - 1) {
+                    obj->Sample(pos, pdf);
+                    pdf *= obj->getArea();
+                    return;
+                }
+            }
+            return;
+        }
+
+        const BVHNode &left = nodes[nodeIdx + 1];
+        const BVHNode &right = nodes[node.first_child];
+
+        if (p < left.area)
+            nodeIdx = nodeIdx + 1;
+        else {
+            p -= left.area;
+            nodeIdx = node.first_child;
+        }
     }
-    if (p < node->children[0]->area)
-        getSample(node->children[0], p, pos, pdf);
-    else
-        getSample(node->children[1], p - node->children[0]->area, pos, pdf);
 }
 
-void BVHAccel::Sample(Intersection& pos, float& pdf)
-{
+void BVHAccel::Sample(Intersection &pos, float &pdf) {
     float p = std::sqrt(get_random_float()) * totalArea;
-    getSample(root, p, pos, pdf);
+    getSample(nullptr, p, pos, pdf); // root param ignored now
     pdf /= totalArea;
 }

@@ -95,15 +95,31 @@ inline float D_GGX(float NdotH, float alpha) {
 
 // ─── Smith Geometry ───────────────────────────────────────────────────────────
 
+// ─── Smith Lambda (shared) ──────────────────────────────────────────────────
+// Smith masking-shadowing Lambda for GGX. Both G1 and the height-correlated
+// G2 are built from THIS, so the VNDF estimator ratio G2/G1 is exact.
+//   lambda(v) = 0.5 * (-1 + sqrt(1 + alpha^2 * tan^2(theta_v)))
+inline float Smith_Lambda_GGX(float NdotV, float alpha) {
+    float c2 = NdotV * NdotV;
+    float t2 = (1.f - c2) / std::max(c2, 1e-6f); // tan^2(theta)
+    return 0.5f * (-1.f + std::sqrt(1.f + alpha * alpha * t2));
+}
+
 /**
  * @brief Smith GGX single-direction masking term (G1).
- * @param NdotV dot(N, V) for the direction being evaluated
- * @param alpha  roughness²
+ *        G1 = 1 / (1 + lambda(v)).  Matches the VNDF sampler exactly.
  */
 inline float G1_GGX(float NdotV, float alpha) {
-    float alpha2 = alpha * alpha;
-    float denom = NdotV + std::sqrt(alpha2 + (1.f - alpha2) * NdotV * NdotV);
-    return NdotV / std::max(denom, 1e-6f);
+    return 1.f / (1.f + Smith_Lambda_GGX(NdotV, alpha));
+}
+
+/**
+ * @brief Height-correlated Smith G2 (Heitz 2014).
+ *        G2 = 1 / (1 + lambda(wo) + lambda(wi)).
+ *        Consistent with G1 above: G2 / G1(wo) is the correct VNDF visibility.
+ */
+inline float G_SmithHeightCorrelated(float NdotWo, float NdotWi, float alpha) {
+    return 1.f / (1.f + Smith_Lambda_GGX(NdotWo, alpha) + Smith_Lambda_GGX(NdotWi, alpha));
 }
 
 /**
@@ -241,19 +257,4 @@ static float fresnel(const Vector3f &I, const Vector3f &N, float ior) {
     float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
     float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
     return (Rs * Rs + Rp * Rp) * 0.5f;
-}
-
-/**
- * @brief Height-correlated Smith G2 for GGX (Heitz 2014).
- *        More accurate than separable G1*G1 — always <= separable,
- *        so the separable form was slightly over-bright at grazing angles.
- * @param NdotWo dot(N, wo)
- * @param NdotWi dot(N, wi)
- * @param alpha  roughness²
- */
-inline float G_SmithHeightCorrelated(float NdotWo, float NdotWi, float alpha) {
-    float a2 = alpha * alpha;
-    float t2o = (1.f - NdotWo * NdotWo) / std::max(NdotWo * NdotWo, 1e-6f); // tan²θo
-    float t2i = (1.f - NdotWi * NdotWi) / std::max(NdotWi * NdotWi, 1e-6f); // tan²θi
-    return 2.f / (1.f + std::sqrt(1.f + a2 * t2o) + std::sqrt(1.f + a2 * t2i));
 }

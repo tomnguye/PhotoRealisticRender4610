@@ -22,7 +22,13 @@ void Scene::buildBVH() {
             totalEmitArea += obj->getArea();
 }
 
-Intersection Scene::intersect(const Ray &ray) const { return this->bvh->Intersect(ray); }
+Intersection Scene::intersect(const Ray &ray) const {
+    return this->bvh->Intersect(ray);
+}
+
+bool Scene::intersectP(const Ray &ray, float tMax) const {
+    return this->bvh->IntersectP(ray, tMax);
+}
 
 void Scene::sampleLight(Intersection &pos, float &pdf) const {
     if (totalEmitArea <= 0.f)
