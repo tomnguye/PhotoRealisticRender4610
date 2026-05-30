@@ -5,6 +5,7 @@
 
 #include "Integrator.hpp"
 #include "Scene.hpp"
+#include "ToneMapping.hpp"
 
 /**
  * @brief Welford online variance tracker.
@@ -47,6 +48,10 @@ struct RenderSettings {
     int maxDepth = 30;
     float varianceThreshold = 0.05f;
     float exposure = 0.18f;
+
+    // Tone mapping operator applied when forming the 8-bit output image.
+    // See ToneMapping.hpp for the available operators.
+    tonemap::ToneMapper toneMapper = tonemap::ToneMapper::AgX;
 };
 
 class Renderer {

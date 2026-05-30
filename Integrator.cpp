@@ -20,15 +20,15 @@ LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector
     float dist2 = dotProduct(toLight, toLight);
     float dist = std::sqrt(dist2);
     Vector3f wi = toLight / dist;
-    float cosAtLight = std::max(0.0f, dotProduct(-wi, lightSample.normal.normalized()));
 
-    if (cosAtLight <= 0.0f)
-        return {Vector3f(0), wi, 1.0f, false};
+    float cosAtLight = std::max(0.f, dotProduct(-wi, lightSample.normal.normalized()));
+    if (cosAtLight <= 0.f)
+        return {Vector3f(0), wi, 1.f, false};
 
     float pdfSolidAngle = lightPdfArea * dist2 / cosAtLight;
 
     Ray shadowRay(hitPoint + wi * EPSILON, wi);
-    bool visible = !scene.intersectP(shadowRay, dist * (1.f - 1e-4f));
+    bool visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
 
     return {lightSample.material->m_emission, wi, pdfSolidAngle, visible};
 }
@@ -105,7 +105,8 @@ Vector3f Integrator::castRay(const Ray &ray) const {
     auto clampIndirect = [this](const Vector3f &c) -> Vector3f {
         if (indirectClamp <= 0.f)
             return c;
-        float lum = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
+        // float lum = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
+        float lum = (c.x + c.y + c.z) / 3;
         return (lum > indirectClamp) ? c * (indirectClamp / lum) : c;
     };
 
@@ -118,7 +119,7 @@ Vector3f Integrator::castRay(const Ray &ray) const {
     // Primed with the camera ray's intersection before the loop.
     Intersection inter = scene.intersect(currentRay);
 
-    for (int bounce = 0; bounce <= maxDepth; bounce++) {
+    for (int bounce = 0; bounce < maxDepth; bounce++) {
 
         if (bounce == 0 || specularBounce) {
             if (!inter.happened) {

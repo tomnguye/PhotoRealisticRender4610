@@ -2,10 +2,12 @@
 #include "Integrator.hpp"
 #include "Material.hpp"
 #include "Scene.hpp"
+#include "ToneMapping.hpp"
 #include "stb_image_write.h"
 #include <atomic>
 #include <fstream>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #ifdef _OPENMP
@@ -18,84 +20,6 @@ struct Tile {
 };
 
 const int TILE_SIZE = 32;
-
-// 3x3 matrix * vector (row-major coefficients, same convention as the GLSL source)
-static Vector3f mat3Mul(const float m[3][3], Vector3f v) {
-    return Vector3f(m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z,
-                    m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z,
-                    m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z);
-}
-
-// The exact AgX sigmoid curve (analytical, not a polynomial fit)
-static Vector3f agxCurve(Vector3f v) {
-    // Piecewise parameters split at the midpoint (threshold = 20/33)
-    const float threshold = 0.6060606060606061f;
-    const float a_up = 69.86278913545539f, a_down = 59.507875f;
-    const float b_up = 13.f / 4.f, b_down = 3.f / 1.f;
-    const float c_up = -4.f / 13.f, c_down = -1.f / 3.f;
-
-    auto curve1 = [&](float x) -> float {
-        bool below = (x <= threshold);
-        float a = below ? a_up : a_down;
-        float b = below ? b_up : b_down;
-        float c = below ? c_up : c_down;
-        float d = x - threshold;
-        return 0.5f + (2.f * x - 2.f * threshold) * std::pow(1.f + a * std::pow(std::abs(d), b), c);
-    };
-
-    return Vector3f(curve1(v.x), curve1(v.y), curve1(v.z));
-}
-static Vector3f agxPunchyLook(Vector3f c) {
-    // BT.2020 luminance coefficients (Blender uses BT.2020 CIE-2012 luma here).
-    float L = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
-    const float sat = 1.4f;
-    const float power = 1.35f;
-    c.x = L + sat * (c.x - L);
-    c.y = L + sat * (c.y - L);
-    c.z = L + sat * (c.z - L);
-    c.x = std::pow(std::max(0.f, c.x), power);
-    c.y = std::pow(std::max(0.f, c.y), power);
-    c.z = std::pow(std::max(0.f, c.z), power);
-    return c;
-}
-
-static Vector3f agxTonemap(Vector3f ci, bool agxPunchy = true) {
-    const float min_ev = -12.473931188332413f;
-    const float max_ev = 4.026068811667588f;
-    const float dynamic_range = max_ev - min_ev;
-
-    const float agx_mat[3][3] = {{0.842479062253094f, 0.0423282422610123f, 0.0423756549057051f},
-                                 {0.0784335999999992f, 0.878468636469772f, 0.0784336f},
-                                 {0.0792237451477643f, 0.0791661274605434f, 0.879142973793104f}};
-    const float agx_mat_inv[3][3] = {
-        {1.19687900512017f, -0.0528968517574562f, -0.0529716355144438f},
-        {-0.0980208811401368f, 1.15190312990417f, -0.0980434501171241f},
-        {-0.0990297440797205f, -0.0989611768448433f, 1.15107367264116f}};
-
-    ci = mat3Mul(agx_mat, ci);
-
-    ci.x = std::max(ci.x, 1e-10f);
-    ci.y = std::max(ci.y, 1e-10f);
-    ci.z = std::max(ci.z, 1e-10f);
-
-    Vector3f ct;
-    ct.x = std::clamp((std::log2(ci.x) - min_ev) / dynamic_range, 0.f, 1.f);
-    ct.y = std::clamp((std::log2(ci.y) - min_ev) / dynamic_range, 0.f, 1.f);
-    ct.z = std::clamp((std::log2(ci.z) - min_ev) / dynamic_range, 0.f, 1.f);
-
-    Vector3f co = agxCurve(ct);
-
-    // Punchy look operates on the formed AgX Base, before outset + encode.
-    if (agxPunchy)
-        co = agxPunchyLook(co);
-
-    co = mat3Mul(agx_mat_inv, co);
-
-    co.x = std::clamp(co.x, 0.f, 1.f);
-    co.y = std::clamp(co.y, 0.f, 1.f);
-    co.z = std::clamp(co.z, 0.f, 1.f);
-    return co;
-}
 
 void Renderer::Render(const Scene &scene, const Integrator &integrator,
                       const RenderSettings &settings) {
@@ -131,6 +55,7 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
               << "\n";
     std::cout << "Tiles: " << totalTiles << " (" << tilesX << "x" << tilesY << " @ " << TILE_SIZE
               << "px)\n";
+    std::cout << "Tone mapper: " << tonemap::toString(settings.toneMapper) << "\n";
 
     std::atomic<int> tilesDone(0);
 
@@ -195,42 +120,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     printf("Adaptive sampling: min=%d max=%d avg=%.1f (budget=%d)\n", minS, maxS,
            (float) totalSamples / (float) totalPixels, maxSamples);
 
-    std::vector<unsigned char> pngBuffer(totalPixels * 3);
-    for (int i = 0; i < totalPixels; i++) {
-        Vector3f raw = framebuffer[i] * settings.exposure;
-
-        if (!std::isfinite(raw.x))
-            raw.x = 0.f;
-        if (!std::isfinite(raw.y))
-            raw.y = 0.f;
-        if (!std::isfinite(raw.z))
-            raw.z = 0.f;
-        raw.x = std::max(0.f, raw.x);
-        raw.y = std::max(0.f, raw.y);
-        raw.z = std::max(0.f, raw.z);
-        auto linearToSRGB = [](float x) -> float {
-            x = std::clamp(x, 0.f, 1.f);
-            return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.f / 2.4f) - 0.055f;
-        };
-
-        auto encode = [](float x) -> float {
-            // AgX output is in a 2.2 power space: de-gamma to linear...
-            float lin = std::pow(std::clamp(x, 0.f, 1.f), 2.2f);
-            // ...then apply the sRGB OETF for the 8-bit PNG.
-            return lin <= 0.0031308f ? 12.92f * lin : 1.055f * std::pow(lin, 1.f / 2.4f) - 0.055f;
-        };
-
-        // Vector3f co = Vector3f(linearToSRGB(raw.x), linearToSRGB(raw.y), linearToSRGB(raw.z));
-        // float r = linearToSRGB(raw.x), g = linearToSRGB(raw.y), b = linearToSRGB(raw.z);
-
-        Vector3f co = agxTonemap(raw, false); // AgX curve result, 2.2-encoded space
-        float r = encode(co.x), g = encode(co.y), b = encode(co.z);
-
-        pngBuffer[i * 3 + 0] = (unsigned char) (std::clamp(r, 0.f, 1.f) * 255.f + 0.5f);
-        pngBuffer[i * 3 + 1] = (unsigned char) (std::clamp(g, 0.f, 1.f) * 255.f + 0.5f);
-        pngBuffer[i * 3 + 2] = (unsigned char) (std::clamp(b, 0.f, 1.f) * 255.f + 0.5f);
-    }
-
     float avgR = 0, avgG = 0, avgB = 0;
     float maxR = 0, maxG = 0, maxB = 0;
     for (int i = 0; i < totalPixels; i++) {
@@ -247,17 +136,64 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     printf("Avg radiance: (%.4f, %.4f, %.4f)\n", avgR, avgG, avgB);
     printf("Max radiance: (%.4f, %.4f, %.4f)\n", maxR, maxG, maxB);
 
-    // PPM
-    FILE *fp = fopen("output.ppm", "wb");
-    fprintf(fp, "P6\n%d %d\n255\n", W, H);
-    for (int i = 0; i < totalPixels; i++)
-        fwrite(&pngBuffer[i * 3], 1, 3, fp);
-    fclose(fp);
+    // -------------------------------------------------------------------------
+    // Tone mapping + output.
+    //
+    // The selected operator is written to output.{png,ppm}. In addition, unless
+    // the selected operator is already Raw, a true-Raw image (scene-linear, no
+    // display transform) is written alongside it (suffixed "_raw"). Note Raw is
+    // a diagnostic passthrough and will look dark on a normal display.
+    // -------------------------------------------------------------------------
 
-    // PNG
-    stbi_write_png("output.png", W, H, 3, pngBuffer.data(), W * 3);
+    // Apply exposure (in linear) and sanitise a single pixel's radiance.
+    auto exposeLinear = [&](int i) -> Vector3f {
+        Vector3f c = framebuffer[i] * exposure;
+        if (!std::isfinite(c.x))
+            c.x = 0.f;
+        if (!std::isfinite(c.y))
+            c.y = 0.f;
+        if (!std::isfinite(c.z))
+            c.z = 0.f;
+        c.x = std::max(0.f, c.x);
+        c.y = std::max(0.f, c.y);
+        c.z = std::max(0.f, c.z);
+        return c;
+    };
 
+    // Tone map the whole framebuffer with a given operator into an 8-bit buffer,
+    // then write it as both PNG and PPM under the given base filename.
+    auto renderAndWrite = [&](tonemap::ToneMapper mapper, const std::string &baseName) {
+        std::vector<unsigned char> buf(totalPixels * 3);
+        for (int i = 0; i < totalPixels; i++) {
+            Vector3f co = tonemap::apply(mapper, exposeLinear(i));
+            buf[i * 3 + 0] = (unsigned char) (std::clamp(co.x, 0.f, 1.f) * 255.f + 0.5f);
+            buf[i * 3 + 1] = (unsigned char) (std::clamp(co.y, 0.f, 1.f) * 255.f + 0.5f);
+            buf[i * 3 + 2] = (unsigned char) (std::clamp(co.z, 0.f, 1.f) * 255.f + 0.5f);
+        }
+
+        const std::string ppmName = baseName + ".ppm";
+        const std::string pngName = baseName + ".png";
+
+        FILE *fp = fopen(ppmName.c_str(), "wb");
+        if (fp) {
+            fprintf(fp, "P6\n%d %d\n255\n", W, H);
+            for (int i = 0; i < totalPixels; i++)
+                fwrite(&buf[i * 3], 1, 3, fp);
+            fclose(fp);
+        }
+        stbi_write_png(pngName.c_str(), W, H, 3, buf.data(), W * 3);
+    };
+
+    // Primary output: the selected operator.
+    renderAndWrite(settings.toneMapper, "output");
+
+    // Companion Raw baseline, unless the selection is already Raw.
+    if (settings.toneMapper != tonemap::ToneMapper::Raw)
+        renderAndWrite(tonemap::ToneMapper::Raw, "output_raw");
+
+    // -------------------------------------------------------------------------
     // Adaptive sampling visualisation
+    // -------------------------------------------------------------------------
     std::vector<unsigned char> sampleBuffer(totalPixels * 3);
     for (int i = 0; i < totalPixels; i++) {
         unsigned char v = (unsigned char) (255 * (float) sampleCount[i] / (float) maxSamples);
@@ -266,9 +202,11 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
         sampleBuffer[i * 3 + 2] = v;
     }
     FILE *fp2 = fopen("sample_count.ppm", "wb");
-    fprintf(fp2, "P6\n%d %d\n255\n", W, H);
-    for (int i = 0; i < totalPixels; i++)
-        fwrite(&sampleBuffer[i * 3], 1, 3, fp2);
-    fclose(fp2);
+    if (fp2) {
+        fprintf(fp2, "P6\n%d %d\n255\n", W, H);
+        for (int i = 0; i < totalPixels; i++)
+            fwrite(&sampleBuffer[i * 3], 1, 3, fp2);
+        fclose(fp2);
+    }
     stbi_write_png("sample_count.png", W, H, 3, sampleBuffer.data(), W * 3);
 }
