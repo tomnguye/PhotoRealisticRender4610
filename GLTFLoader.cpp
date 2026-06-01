@@ -215,7 +215,7 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
                     primMat = mm;
                 } else if (matType == MaterialType::Emit) {
                     auto *em = new EmissiveMaterial();
-                    em->m_emission = em->m_emission;
+                    em->m_emission = dm->m_emission;
                     delete dm;
                     primMat = em;
                 } else {

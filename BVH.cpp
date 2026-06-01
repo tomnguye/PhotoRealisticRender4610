@@ -508,7 +508,7 @@ void BVHAccel::getSample(BuildNode * /*node*/, float p, Intersection &pos, float
 }
 
 void BVHAccel::Sample(Intersection &pos, float &pdf) {
-    float p = std::sqrt(get_random_float()) * totalArea;
-    getSample(nullptr, p, pos, pdf); // root param ignored now
+    float p = get_random_float() * totalArea; // uniform along the area CDF
+    getSample(nullptr, p, pos, pdf);
     pdf /= totalArea;
 }

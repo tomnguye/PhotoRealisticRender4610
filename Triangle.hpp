@@ -97,8 +97,15 @@ class Triangle : public Object {
     Bounds3 getBounds() override;
     void Sample(Intersection &pos, float &pdf) override {
         float x = std::sqrt(get_random_float()), y = get_random_float();
-        pos.coords = v0 * (1.0f - x) + v1 * (x * (1.0f - y)) + v2 * (x * y);
-        pos.normal = this->normal;
+        float b0 = 1.0f - x, b1 = x * (1.0f - y), b2 = x * y;
+        pos.coords = v0 * b0 + v1 * b1 + v2 * b2;
+        // Return the SMOOTH interpolated normal at the sampled point when vertex
+        // normals exist, matching finalize() so NEE and BSDF-hit agree on the
+        // emitter's normal. Falls back to the flat face normal otherwise.
+        if (hasSmoothNormals)
+            pos.normal = normalize(n0 * b0 + n1 * b1 + n2 * b2);
+        else
+            pos.normal = this->normal;
         pdf = 1.0f / area;
     }
     float getArea() override {

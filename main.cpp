@@ -13,12 +13,12 @@ int main(int argc, char **argv) {
     settings.width = 1920 / 2;
     settings.height = 1080 / 2;
     settings.minSPP = 1;
-    settings.maxSPP = 4096 / 16;
+    settings.maxSPP = 4096 / 64;
     settings.russianRoulette = 0.95f;
     settings.maxDepth = 12;
     settings.varianceThreshold = 0.01f;
     settings.exposure = 1.0f;
-    settings.toneMapper = tonemap::ToneMapper::PBRNeutral;
+    settings.toneMapper = tonemap::ToneMapper::AgX;
 
     Scene scene = buildScene();
 

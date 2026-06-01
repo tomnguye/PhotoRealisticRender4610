@@ -27,7 +27,7 @@ LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector
 
     float pdfSolidAngle = lightPdfArea * dist2 / cosAtLight;
 
-    Ray shadowRay(hitPoint + wi * EPSILON, wi);
+    Ray shadowRay(hitPoint + N * EPSILON, wi);
     bool visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
 
     return {lightSample.material->m_emission, wi, pdfSolidAngle, visible};
@@ -35,8 +35,12 @@ LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector
 
 /**
  * @brief Direct samples light coming from the environment map.
+ *
+ * The shadow ray origin is offset along the surface normal N (not along the
+ * sampled direction) so that grazing samples are still lifted clear of the
+ * surface and do not self-intersect.
  */
-LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint) const {
+LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vector3f &N) const {
     LightSample lightSample;
     if (scene.envMap.empty()) {
         lightSample.visible = false;
@@ -51,7 +55,8 @@ LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint) const {
         return lightSample;
     }
 
-    Ray shadowRay(hitPoint + sampleDir * EPSILON, sampleDir);
+    // Offset along the surface normal, consistent with sampleDirectLight.
+    Ray shadowRay(hitPoint + N * EPSILON, sampleDir);
     if (scene.intersectP(shadowRay)) {
         lightSample.visible = false;
         return lightSample;
@@ -128,8 +133,14 @@ Vector3f Integrator::castRay(const Ray &ray) const {
                 Vector3f contrib = beta * bg;
                 L += (bounce > 0) ? clampIndirect(contrib) : contrib;
             } else if (inter.material->isEmissive()) {
-                Vector3f contrib = beta * inter.material->m_emission;
-                L += (bounce > 0) ? clampIndirect(contrib) : contrib;
+                // One-sided emission: only the front face (the side the geometric
+                // normal points out of) emits. A ray striking the back face sees
+                // no emission, matching Blender's default emission shader.
+                bool frontFace = dotProduct(-currentRay.direction, inter.normal.normalized()) > 0.f;
+                if (frontFace) {
+                    Vector3f contrib = beta * inter.material->m_emission;
+                    L += (bounce > 0) ? clampIndirect(contrib) : contrib;
+                }
             }
         }
 
@@ -192,7 +203,7 @@ Vector3f Integrator::castRay(const Ray &ray) const {
 
             // --- Environment light sampling (NEE). ---
             if (!scene.envMap.empty()) {
-                LightSample envSample = sampleEnvironmentMap(hitPoint);
+                LightSample envSample = sampleEnvironmentMap(hitPoint, sd.N);
                 Vector3f contrib = beta * evalEnvironmentSample(envSample, wo, sd, dm);
                 L += isIndirect ? clampIndirect(contrib) : contrib;
             }
@@ -229,8 +240,12 @@ Vector3f Integrator::castRay(const Ray &ray) const {
             }
 
             if (inter.material->isEmissive()) {
-                float cosThetaLight =
-                    std::max(0.f, dotProduct(-bsdf.wi, inter.normal.normalized()));
+                float cosThetaLight = dotProduct(-bsdf.wi, inter.normal.normalized());
+                // One-sided emission: a BSDF ray hitting the back face of the
+                // emitter sees no emission. cosThetaLight <= 0 means the hit is
+                // on the back face (or edge-on), so add nothing and stop.
+                if (cosThetaLight <= 0.f)
+                    break;
                 Vector3f d = inter.coords - hitPoint;
                 float hitDist2 = dotProduct(d, d);
                 float lightPdfArea = scene.pdfLight(inter);

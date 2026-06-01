@@ -35,7 +35,7 @@ class Integrator {
     Vector3f evalLightSample(const LightSample &light, const Vector3f &wo, const ShadingData &sd,
                              Material *mat) const;
 
-    LightSample sampleEnvironmentMap(const Vector3f &hitpoint) const;
+    LightSample sampleEnvironmentMap(const Vector3f &hitPoint, const Vector3f &N) const;
     Vector3f evalEnvironmentSample(const LightSample &sample, const Vector3f &wo,
                                    const ShadingData &sd, Material *mat) const;
 
