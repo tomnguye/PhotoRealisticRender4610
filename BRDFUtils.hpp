@@ -5,8 +5,8 @@
 
 /*
 The convention for this is:
-incoming ray wi points from surface -> light.
-outgoing ray wo points from surface -> camera.
+ray wi points from surface -> light.
+ray wo points from surface -> camera.
 */
 
 /**
@@ -20,12 +20,6 @@ inline void buildTBN(const Vector3f &N, Vector3f &T, Vector3f &B) {
         float invLen = 1.0f / std::sqrt(N.y * N.y + N.z * N.z);
         T = Vector3f(0.0f, N.z * invLen, -N.y * invLen);
     }
-    // Right-handed basis: with toWorld() doing x*T + y*B + z*N, we need
-    // cross(T, B) == N, which requires B = cross(N, T). The previous
-    // cross(T, N) produced a left-handed (reflected) frame. That was invisible
-    // when sd.N == Ng because toLocal/toWorld used it consistently and the
-    // reflection cancelled on round-trip, but it corrupted tangent-space normal
-    // map perturbations, which are built in a separate right-handed UV frame.
     B = crossProduct(N, T);
 }
 
@@ -40,7 +34,6 @@ inline Vector3f toWorld(const Vector3f &local, const Vector3f &N) {
 
 /**
  * @brief Transform a direction from world space to local/tangent space aligned to N.
- *        In local space, N maps to (0,0,1).
  */
 inline Vector3f toLocal(const Vector3f &world, const Vector3f &N) {
     Vector3f T, B;
@@ -48,16 +41,12 @@ inline Vector3f toLocal(const Vector3f &world, const Vector3f &N) {
     return Vector3f(dotProduct(world, T), dotProduct(world, B), dotProduct(world, N));
 }
 
-// ─── Reflect ─────────────────────────────────────────────────────────────────
-
 /**
  * @brief Reflect direction I about normal N. I should point away from the surface.
  */
 static Vector3f reflect(const Vector3f &wo, const Vector3f &N) {
     return 2.f * dotProduct(wo, N) * N - wo;
 }
-
-// ─── Cosine-Weighted Hemisphere ───────────────────────────────────────────────
 
 /**
  * @brief Sample a cosine-weighted direction on the hemisphere aligned to N.
@@ -80,12 +69,10 @@ inline float pdfCosineHemisphere(float NdotWi) {
     return std::max(0.f, NdotWi) / M_PI;
 }
 
-// ─── GGX NDF ─────────────────────────────────────────────────────────────────
-
 /**
  * @brief GGX Normal Distribution Function.
  * @param NdotH dot(N, H)
- * @param alpha  roughness² (perceptual roughness squared)
+ * @param alpha  roughness^2
  */
 inline float D_GGX(float NdotH, float alpha) {
     float alpha2 = alpha * alpha;
@@ -93,12 +80,7 @@ inline float D_GGX(float NdotH, float alpha) {
     return alpha2 / (M_PI * denom * denom);
 }
 
-// ─── Smith Geometry ───────────────────────────────────────────────────────────
-
-// ─── Smith Lambda (shared) ──────────────────────────────────────────────────
 // Smith masking-shadowing Lambda for GGX. Both G1 and the height-correlated
-// G2 are built from THIS, so the VNDF estimator ratio G2/G1 is exact.
-//   lambda(v) = 0.5 * (-1 + sqrt(1 + alpha^2 * tan^2(theta_v)))
 inline float Smith_Lambda_GGX(float NdotV, float alpha) {
     float c2 = NdotV * NdotV;
     float t2 = (1.f - c2) / std::max(c2, 1e-6f); // tan^2(theta)
@@ -107,57 +89,35 @@ inline float Smith_Lambda_GGX(float NdotV, float alpha) {
 
 /**
  * @brief Smith GGX single-direction masking term (G1).
- *        G1 = 1 / (1 + lambda(v)).  Matches the VNDF sampler exactly.
  */
 inline float G1_GGX(float NdotV, float alpha) {
     return 1.f / (1.f + Smith_Lambda_GGX(NdotV, alpha));
 }
 
 /**
- * @brief Height-correlated Smith G2 (Heitz 2014).
- *        G2 = 1 / (1 + lambda(wo) + lambda(wi)).
- *        Consistent with G1 above: G2 / G1(wo) is the correct VNDF visibility.
+ * @brief Height-correlated Smith G2
  */
 inline float G_SmithHeightCorrelated(float NdotWo, float NdotWi, float alpha) {
     return 1.f / (1.f + Smith_Lambda_GGX(NdotWo, alpha) + Smith_Lambda_GGX(NdotWi, alpha));
 }
 
 /**
- * @brief Height-correlated Smith G2 (separable approximation).
- *        More accurate than naive G1(wi)*G1(wo) but still cheap.
- * @param NdotWo dot(N, wo), wo points surface -> camera
- * @param NdotWi dot(N, wi), wi points surface -> light
- * @param alpha   roughness²
- */
-inline float G_Smith(float NdotWo, float NdotWi, float alpha) {
-    return G1_GGX(NdotWo, alpha) * G1_GGX(NdotWi, alpha);
-}
-
-// ─── Fresnel ──────────────────────────────────────────────────────────────────
-
-/**
  * @brief Schlick Fresnel approximation.
  * @param WoDotH dot(wo, H)
- * @param F0     base reflectance at normal incidence
+ * @param F0 base reflectance at normal incidence
  */
 inline Vector3f F_Schlick(float WoDotH, const Vector3f &F0) {
     float t = std::pow(std::max(0.f, 1.f - WoDotH), 5.f);
     return F0 + (Vector3f(1.f) - F0) * t;
 }
 
-// ─── GGX VNDF Sampling ───────────────────────────────────────────────────────
-
 /**
- * @brief Sample a microfacet normal from the GGX Visible Normal Distribution (Heitz 2018).
- *        Produces far less variance than naive NDF sampling, especially at low roughness.
+ * @brief Sample a microfacet normal from the GGX VNDF
  *
- *        IMPORTANT: wo must be in LOCAL space (N = Z axis).
- *        Returns the sampled half-vector H in LOCAL space.
- *
- * @param wo    Outgoing direction in local space (surface -> camera). Must have wo.z > 0.
- * @param alpha roughness² (perceptual roughness squared)
- * @param u1    Uniform random sample in [0, 1)
- * @param u2    Uniform random sample in [0, 1)
+ * @param wo Outgoing direction in local space (surface -> camera). Must have wo.z > 0.
+ * @param alpha roughness^2
+ * @param u1 Uniform random sample in [0, 1)
+ * @param u2 Uniform random sample in [0, 1)
  * @return Vector3f Sampled half-vector H in local space.
  */
 inline Vector3f sampleGGX_VNDF(const Vector3f &wo, float alpha, float u1, float u2) {
@@ -183,24 +143,16 @@ inline Vector3f sampleGGX_VNDF(const Vector3f &wo, float alpha, float u1, float 
 /**
  * @brief PDF for a GGX VNDF sample, expressed as a density over wi directions.
  *
- *        Use this (not pdfGGX) when sampling with sampleGGX_VNDF.
- *        Derivation: pdf(H) = D(H)*G1(wo)*dot(wo,H)/dot(N,wo),
- *        then change of variables to wi gives the /4*dot(wo,H) Jacobian.
- *
  * @param NdotWo dot(N, wo)
  * @param NdotH  dot(N, H)
  * @param WoDotH dot(wo, H)
- * @param alpha  roughness²
+ * @param alpha roughness^2
  */
 inline float pdfGGX_VNDF(float NdotWo, float NdotH, float WoDotH, float alpha) {
     float D = D_GGX(NdotH, alpha);
     float G1 = G1_GGX(NdotWo, alpha);
-    // pdf(H) = D * G1 * WoDotH / NdotWo
-    // pdf(wi) = pdf(H) / (4 * WoDotH)  <- reflection Jacobian
     return D * G1 * std::max(0.f, WoDotH) /
            (std::max(1e-6f, NdotWo) * 4.f * std::max(1e-4f, WoDotH));
-    // Simplifies to:
-    // return D * G1 / (4.f * std::max(1e-6f, NdotWo));
 }
 
 /**
@@ -210,7 +162,7 @@ inline float pdfGGX_VNDF(float NdotWo, float NdotH, float WoDotH, float alpha) {
  * @param NdotWo     dot(N, wo)
  * @param NdotH      dot(N, H)
  * @param WoDotH     dot(wo, H)
- * @param alpha      roughness²
+ * @param alpha      roughness^2
  * @param specWeight probability of having chosen the specular lobe [0,1]
  */
 inline float pdfMixed(float NdotWi, float NdotWo, float NdotH, float WoDotH, float alpha,
@@ -220,14 +172,9 @@ inline float pdfMixed(float NdotWi, float NdotWo, float NdotH, float WoDotH, flo
     return specWeight * ps + (1.f - specWeight) * pd;
 }
 
-// ─── Misc ─────────────────────────────────────────────────────────────────────
-
 inline float luminance(const Vector3f &c) {
     return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
 }
-
-// ─── Legacy dielectric helpers ────────────────────────────────────────────────
-// (kept for compatibility with glass/dielectric materials)
 
 static Vector3f refract(const Vector3f &I, const Vector3f &N, float ior) {
     float cosi = clamp(-1.f, 1.f, dotProduct(I, N));

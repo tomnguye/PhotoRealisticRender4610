@@ -28,30 +28,26 @@ int main(int argc, char **argv) {
         if (arg == "--no-shadows") {
             settings.shadows = false;
             fprintf(stderr, "[main] SHADOWS OFF\n");
-        }
-        else if (arg == "--light-brightness" && i + 1 < argc){
+        } else if (arg == "--light-brightness" && i + 1 < argc) {
             settings.lightBrightness = std::atof(argv[++i]);
             fprintf(stderr, "[main] LIGHT BRIGHTNESS SET TO %f\n", settings.lightBrightness);
 
-        }
-        else if (arg == "--env-dark"){
+        } else if (arg == "--env-dark") {
             settings.envMap = "dark";
             fprintf(stderr, "[main] ENV MAP SET TO DARK\n");
         }
     }
 
-
-    Scene scene = buildScene(settings);
+    Scene scene = buildScene();
 
     // scene.camera.aperture = 0.003;
     scene.camera.init(settings.width, settings.height);
 
     scene.medium.sigma_t = -1;
 
-    
-
     // Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
-    Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette, settings.shadows);
+    Integrator integrator =
+        Integrator(scene, settings.maxDepth, settings.russianRoulette, settings.shadows);
 
     auto start = std::chrono::system_clock::now();
 
