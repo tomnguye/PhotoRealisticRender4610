@@ -1,9 +1,6 @@
 #include "Renderer.hpp"
 #include "Scene.hpp"
-#include "Sphere.hpp"
 #include "ToneMapping.hpp"
-#include "Triangle.hpp"
-#include "Vector.hpp"
 #include "global.hpp"
 #include "scenes/museum_final.cpp"
 // #include "scenes/museum_final_old.cpp"
@@ -42,8 +39,6 @@ int main(int argc, char **argv) {
 
     // scene.camera.aperture = 0.003;
     scene.camera.init(settings.width, settings.height);
-
-    scene.medium.sigma_t = -1;
 
     // Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
     Integrator integrator =

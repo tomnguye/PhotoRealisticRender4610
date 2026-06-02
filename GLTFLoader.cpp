@@ -2,63 +2,72 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "GLTFLoader.hpp"
+#include "Bounds3.hpp"
 #include "Material.hpp"
 #include "Triangle.hpp"
 #include "Vector.hpp"
-
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <numeric>
+#include <string.h>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-inline std::vector<float> tg_readFloats(const tinygltf::Model &m, int idx) {
-    auto &acc = m.accessors[idx];
-    auto &bv = m.bufferViews[acc.bufferView];
-    auto &buf = m.buffers[bv.buffer];
-    int nc = tinygltf::GetNumComponentsInType(acc.type);
-    int cs = tinygltf::GetComponentSizeInBytes(acc.componentType);
-    size_t stride = bv.byteStride ? bv.byteStride : nc * cs;
-    const unsigned char *base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+inline static std::vector<float> readFloats(const tinygltf::Model &model, int accessorIndex) {
+    auto &accessor = model.accessors[accessorIndex];
+    auto &bufferView = model.bufferViews[accessor.bufferView];
+    const unsigned char *base =
+        model.buffers[bufferView.buffer].data.data() + bufferView.byteOffset + accessor.byteOffset;
 
-    std::vector<float> out;
-    out.reserve(acc.count * nc);
-    for (size_t i = 0; i < acc.count; ++i) {
-        const unsigned char *e = base + i * stride;
-        for (int c = 0; c < nc; ++c) {
-            float v = 0;
-            if (acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-                memcpy(&v, e + c * 4, 4);
-            else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                uint16_t u;
-                memcpy(&u, e + c * 2, 2);
-                v = u / 65535.0f;
-            } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
-                v = e[c] / 255.0f;
-            out.push_back(v);
+    int componentCount = tinygltf::GetNumComponentsInType(accessor.type);
+    int componentSize = tinygltf::GetComponentSizeInBytes(accessor.componentType);
+    size_t stride = bufferView.byteStride ? bufferView.byteStride : componentCount * componentSize;
+
+    auto decode = [&](const unsigned char *ptr) -> float {
+        switch (accessor.componentType) {
+        case TINYGLTF_COMPONENT_TYPE_FLOAT: {
+            float value;
+            memcpy(&value, ptr, 4);
+            return value;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+            uint16_t raw;
+            memcpy(&raw, ptr, 2);
+            return raw / 65535.0f;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+            return *ptr / 255.0f;
+        default:
+            return 0;
+        }
+    };
+
+    std::vector<float> result;
+    result.reserve(accessor.count * componentCount);
+    for (size_t element = 0; element < accessor.count; ++element) {
+        const unsigned char *elementPtr = base + element * stride;
+        for (int component = 0; component < componentCount; ++component) {
+            result.push_back(decode(elementPtr + component * componentSize));
         }
     }
-    return out;
+    return result;
 }
+inline static std::vector<uint32_t> readIndices(const tinygltf::Model &model, int accessorIndex) {
+    auto &accessor = model.accessors[accessorIndex];
+    auto &bufferView = model.bufferViews[accessor.bufferView];
+    const unsigned char *base =
+        model.buffers[bufferView.buffer].data.data() + bufferView.byteOffset + accessor.byteOffset;
 
-inline std::vector<uint32_t> tg_readIndices(const tinygltf::Model &m, int idx) {
-    auto &acc = m.accessors[idx];
-    auto &bv = m.bufferViews[acc.bufferView];
-    const unsigned char *base = m.buffers[bv.buffer].data.data() + bv.byteOffset + acc.byteOffset;
-
-    std::vector<uint32_t> out(acc.count);
-    for (size_t i = 0; i < acc.count; ++i) {
-        if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-            uint32_t v;
-            memcpy(&v, base + i * 4, 4);
-            out[i] = v;
-        } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            uint16_t v;
-            memcpy(&v, base + i * 2, 2);
-            out[i] = v;
-        } else {
-            out[i] = base[i];
-        }
+    int componentSize = tinygltf::GetComponentSizeInBytes(accessor.componentType);
+    std::vector<uint32_t> result(accessor.count);
+    for (size_t i = 0; i < accessor.count; ++i) {
+        memcpy(&result[i], base + i * componentSize, componentSize);
     }
-    return out;
+    return result;
 }
 
 void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Material &gm,
@@ -79,12 +88,11 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->baseColorTex.height = img.height;
         out->baseColorTex.channels = img.component;
         if (img.bits == 16) {
-            // 16-bit: each channel is 2 bytes, reinterpret as uint16 and downscale
             const uint16_t *src = reinterpret_cast<const uint16_t *>(img.image.data());
             size_t npixels = img.width * img.height * img.component;
             out->baseColorTex.data.resize(npixels);
             for (size_t j = 0; j < npixels; ++j)
-                out->baseColorTex.data[j] = src[j] >> 8; // 16-bit -> 8-bit
+                out->baseColorTex.data[j] = src[j] >> 8; // converts 16 bit to 8 bit
         } else {
             out->baseColorTex.data = img.image;
         }
@@ -98,12 +106,11 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->metallicRoughnessTex.height = img.height;
         out->metallicRoughnessTex.channels = img.component;
         if (img.bits == 16) {
-            // 16-bit: each channel is 2 bytes, reinterpret as uint16 and downscale
             const uint16_t *src = reinterpret_cast<const uint16_t *>(img.image.data());
             size_t npixels = img.width * img.height * img.component;
             out->metallicRoughnessTex.data.resize(npixels);
             for (size_t j = 0; j < npixels; ++j)
-                out->metallicRoughnessTex.data[j] = src[j] >> 8; // 16-bit -> 8-bit
+                out->metallicRoughnessTex.data[j] = src[j] >> 8; // converts 16 bit to 8 bit
         } else {
             out->metallicRoughnessTex.data = img.image;
         }
@@ -117,12 +124,11 @@ void GLTFLoader::loadMaterial(const tinygltf::Model &model, const tinygltf::Mate
         out->normalTex.channels = img.component;
 
         if (img.bits == 16) {
-            // 16-bit: each channel is 2 bytes, reinterpret as uint16 and downscale
             const uint16_t *src = reinterpret_cast<const uint16_t *>(img.image.data());
             size_t npixels = img.width * img.height * img.component;
             out->normalTex.data.resize(npixels);
             for (size_t j = 0; j < npixels; ++j)
-                out->normalTex.data[j] = src[j] >> 8; // 16-bit -> 8-bit
+                out->normalTex.data[j] = src[j] >> 8; // converts 16 bit to 8 bit
         } else {
             out->normalTex.data = img.image;
         }
@@ -163,17 +169,17 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
             if (prim.mode != TINYGLTF_MODE_TRIANGLES)
                 continue;
 
-            auto pos = tg_readFloats(model, prim.attributes.at("POSITION"));
+            auto pos = readFloats(model, prim.attributes.at("POSITION"));
             auto nrm = prim.attributes.count("NORMAL")
-                           ? tg_readFloats(model, prim.attributes.at("NORMAL"))
+                           ? readFloats(model, prim.attributes.at("NORMAL"))
                            : std::vector<float>{};
             auto uvs = prim.attributes.count("TEXCOORD_0")
-                           ? tg_readFloats(model, prim.attributes.at("TEXCOORD_0"))
+                           ? readFloats(model, prim.attributes.at("TEXCOORD_0"))
                            : std::vector<float>{};
             auto tan = prim.attributes.count("TANGENT")
-                           ? tg_readFloats(model, prim.attributes.at("TANGENT"))
+                           ? readFloats(model, prim.attributes.at("TANGENT"))
                            : std::vector<float>{};
-            auto idx = prim.indices >= 0 ? tg_readIndices(model, prim.indices) : [&] {
+            auto idx = prim.indices >= 0 ? readIndices(model, prim.indices) : [&] {
                 std::vector<uint32_t> v(pos.size() / 3);
                 std::iota(v.begin(), v.end(), 0);
                 return v;
@@ -181,8 +187,8 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
 
             Material *primMat = overrideMat;
             if (!overrideMat) {
-                // Create the right material type, but always load textures into a DiffuseMaterial
-                // first
+                // Create the right material type, but always load textures into a diffusem aterial
+                // first because it stores everything. TODO: clean this up.
                 auto *dm = new DiffuseMaterial();
                 if (prim.material >= 0)
                     loadMaterial(model, model.materials[prim.material], dm);
@@ -219,7 +225,7 @@ std::vector<MeshTriangle *> GLTFLoader::load(const std::string &filename, Materi
                     delete dm;
                     primMat = em;
                 } else {
-                    primMat = dm; // Diffuse, keep as-is
+                    primMat = dm; // diffuse stays as is.
                 }
             }
 

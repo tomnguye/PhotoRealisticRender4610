@@ -33,7 +33,7 @@ set(SOURCES
     Material.cpp
     Photon.cpp
     Integrator.cpp
-    Volume.cpp
+    
 )
 
 add_executable(RayTracing ${SOURCES})

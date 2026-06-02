@@ -1,5 +1,4 @@
 #include "Integrator.hpp"
-#include "Volume.hpp"
 #include <queue>
 
 #ifdef _OPENMP
@@ -60,7 +59,6 @@ LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vec
     float pdf;
     Vector3f sampleDir = scene.envMap.importanceSample(pdf);
 
-
     if (pdf < 1e-6f) {
         lightSample.visible = false;
         return lightSample;
@@ -68,13 +66,12 @@ LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vec
 
     // Offset along the surface normal, consistent with sampleDirectLight.
     // modifying in attempt to toggle shadows
-    if (shadowsEnabled){
+    if (shadowsEnabled) {
         Ray shadowRay(hitPoint + N * EPSILON, sampleDir);
         if (scene.intersectP(shadowRay)) {
             lightSample.visible = false;
             return lightSample;
         }
-
     }
 
     lightSample.dir = sampleDir;

@@ -9,7 +9,6 @@
 #include "PointLight.hpp"
 #include "Ray.hpp"
 #include "Vector.hpp"
-#include "Volume.hpp"
 #include <vector>
 
 class Scene {
@@ -22,7 +21,6 @@ class Scene {
     Camera camera;
     float totalEmitArea = 0.f;
     PhotonMap photon_map;
-    Medium medium;
 
     void Add(Object *object) {
         objects.push_back(object);
