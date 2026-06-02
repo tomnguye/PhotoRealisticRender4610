@@ -3,12 +3,12 @@
 #include "BVH.hpp"
 #include "Camera.hpp"
 #include "EnvMap.hpp"
-#include "Material.hpp"
+#include "Intersection.hpp"
 #include "Object.hpp"
 #include "Photon.hpp"
-#include "PointLight.hpp"
 #include "Ray.hpp"
 #include "Vector.hpp"
+#include <limits>
 #include <vector>
 
 class Scene {

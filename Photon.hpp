@@ -30,7 +30,7 @@ struct PhotonGrid {
 };
 
 class PhotonMap {
-public:
+  public:
     std::vector<Photon> caustic_map;
     PhotonGrid caustic_grid;
     float photon_radius = 0.01f;
@@ -40,7 +40,7 @@ public:
     void build();
     Vector3f estimateIrradiance(Vector3f pos, Vector3f normal) const;
 
-private:
+  private:
     void trace(Photon p, int depth, std::vector<Photon> &t_caustic, const Scene &scene);
 };
 

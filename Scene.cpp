@@ -1,8 +1,11 @@
 #include "Scene.hpp"
-#include <queue>
+#include "BVH.hpp"
+#include "Intersection.hpp"
+#include "Ray.hpp"
+#include "global.hpp"
+#include <cstdio>
 
 #ifdef _OPENMP
-#include <omp.h>
 #endif
 
 void Scene::buildPhotonMaps(int num_photons) {
@@ -48,8 +51,7 @@ void Scene::sampleLight(Intersection &pos, float &pdf) const {
             return;
         }
     }
-    // Fallback: floating point edge case put p just above totalEmitArea.
-    // Sample the last emissive.
+
     if (!emissives.empty()) {
         emissives.back()->Sample(pos, pdf);
         pdf = 1.0f / totalEmitArea;

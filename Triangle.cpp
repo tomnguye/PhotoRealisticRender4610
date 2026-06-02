@@ -2,7 +2,6 @@
 #include "Bounds3.hpp"
 #include "Intersection.hpp"
 #include "Material.hpp"
-#include "OBJ_Loader.hpp"
 #include "Ray.hpp"
 #include "Vector.hpp"
 #include <algorithm>
@@ -10,36 +9,6 @@
 #include <cassert>
 #include <limits>
 #include <string>
-
-MeshTriangle::MeshTriangle(const std::string &filename, Vector3f offset, Material *mt) {
-    objl::Loader loader;
-    loader.LoadFile(filename);
-    area = 0;
-    m = mt;
-    assert(loader.LoadedMeshes.size() == 1);
-    auto mesh = loader.LoadedMeshes[0];
-
-    Vector3f minVert(std::numeric_limits<float>::infinity());
-    Vector3f maxVert(-std::numeric_limits<float>::infinity());
-
-    for (int i = 0; i < (int) mesh.Vertices.size(); i += 3) {
-        std::array<Vector3f, 3> face;
-        for (int j = 0; j < 3; j++) {
-            auto vert = Vector3f(mesh.Vertices[i + j].Position.X + offset.x,
-                                 mesh.Vertices[i + j].Position.Y + offset.y,
-                                 mesh.Vertices[i + j].Position.Z + offset.z);
-            face[j] = vert;
-            minVert = Vector3f(std::min(minVert.x, vert.x), std::min(minVert.y, vert.y),
-                               std::min(minVert.z, vert.z));
-            maxVert = Vector3f(std::max(maxVert.x, vert.x), std::max(maxVert.y, vert.y),
-                               std::max(maxVert.z, vert.z));
-        }
-        triangles.emplace_back(face[0], face[1], face[2], mt);
-    }
-
-    bounding_box = Bounds3(minVert, maxVert);
-    buildBVH();
-}
 
 Intersection Triangle::finalize(const Ray &ray, float t, float u, float v) const {
     Intersection inter;

@@ -9,21 +9,16 @@
 #include "Intersection.hpp"
 #include "Ray.hpp"
 #include "Vector.hpp"
-#include "global.hpp"
+#include <cstdint>
+#include <limits>
 
 class Object {
   public:
     Object() {}
     virtual ~Object() {}
     virtual Intersection getIntersection(Ray _ray) = 0;
-    // Lightweight shadow test — returns a hit distance in (0, tMax) if the ray
-    // is occluded within tMax, or -1.f otherwise. Overrides in leaf primitives
-    // avoid building a full Intersection; the tMax bound lets aggregate objects
-    // (e.g. MeshTriangle) early-exit on the first occluder inside range instead
-    // of running a full closest-hit search.
     virtual float intersectT(const Ray &ray,
                              float tMax = std::numeric_limits<float>::infinity()) const {
-        // Safe default: fall back to full intersection, then honour the bound.
         Intersection i = const_cast<Object *>(this)->getIntersection(ray);
         return (i.happened && i.tnear < tMax) ? (float) i.tnear : -1.f;
     }
@@ -35,4 +30,4 @@ class Object {
     virtual bool hasEmit() = 0;
 };
 
-#endif // RAYTRACING_OBJECT_H
+#endif
