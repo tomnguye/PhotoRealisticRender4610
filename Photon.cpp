@@ -110,7 +110,7 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
         sd.N = geoN;
 
         Vector3f wo = -p.direction;
-        BSDFSample bsdf = mat->sample(wo, sd);
+        BRDFSample bsdf = mat->sample(wo, sd);
 
         p.is_caustic = true;
         p.power = p.power * bsdf.f;
@@ -134,7 +134,7 @@ void PhotonMap::trace(Photon p, int depth, std::vector<Photon> &t_caustic, const
                                  : dm->buildShadingData(hit.tcoords, geoN);
 
             Vector3f wo = -p.direction;
-            BSDFSample bsdf = dm->sample(wo, sd);
+            BRDFSample bsdf = dm->sample(wo, sd);
             if (bsdf.pdf < 1e-6f)
                 return;
 
