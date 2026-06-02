@@ -185,21 +185,20 @@ static Scene buildScene() {
          GLTFLoader::load("../assets/museum_final/sphere_gltf.glb", MaterialType::Diffuse)) {
         scene.Add(mesh);
     }
-    // for (auto *mesh :
-    //      GLTFLoader::load("../assets/museum_final/tree_small_02_LOD0.glb",
-    //      MaterialType::Diffuse)) {
-    //     scene.Add(mesh);
-    // }
+    for (auto *mesh :
+         GLTFLoader::load("../assets/museum_final/tree_small_02_LOD0.glb", MaterialType::Diffuse)) {
+        scene.Add(mesh);
+    }
 
     // trex_exhibit
     for (auto *mesh :
          GLTFLoader::load("../assets/museum_final/barrier.glb", MaterialType::Diffuse)) {
         scene.Add(mesh);
     }
-    // for (auto *mesh :
-    //      GLTFLoader::load("../assets/museum_final/dinosaur.glb", MaterialType::Diffuse)) {
-    //     scene.Add(mesh);
-    // }
+    for (auto *mesh :
+         GLTFLoader::load("../assets/museum_final/dinosaur.glb", MaterialType::Diffuse)) {
+        scene.Add(mesh);
+    }
     for (auto *mesh :
          GLTFLoader::load("../assets/museum_final/platform.glb", MaterialType::Diffuse)) {
         scene.Add(mesh);
