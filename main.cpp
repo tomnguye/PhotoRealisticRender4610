@@ -1,10 +1,14 @@
+#include "Integrator.hpp"
 #include "Renderer.hpp"
 #include "Scene.hpp"
 #include "ToneMapping.hpp"
-#include "global.hpp"
 #include "scenes/museum_final.cpp"
-// #include "scenes/museum_final_old.cpp"
 #include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <iostream>
+#include <ostream>
+#include <string>
 
 int main(int argc, char **argv) {
     RenderSettings settings;

@@ -224,7 +224,7 @@ void BVHAccel::intersectTriangleLeaf(const BVHNode &node, const Ray &ray, float 
                                      const Triangle *&hitTriangle, float &hitU, float &hitV) const {
     for (uint32_t i = 0; i < node.primitive_count(); i++) {
         const Triangle *tri = static_cast<const Triangle *>(orderedPrims[node.first_child + i]);
-        Triangle::TriHit h = tri->hitTest(ray);
+        Triangle::TriangleHit h = tri->hitTest(ray);
         if (h.happened && h.t < closestT) {
             closestT = h.t;
             hitTriangle = tri;

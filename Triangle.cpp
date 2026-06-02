@@ -1,5 +1,15 @@
 #include "Triangle.hpp"
+#include "Bounds3.hpp"
+#include "Intersection.hpp"
+#include "Material.hpp"
 #include "OBJ_Loader.hpp"
+#include "Ray.hpp"
+#include "Vector.hpp"
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <limits>
+#include <string>
 
 MeshTriangle::MeshTriangle(const std::string &filename, Vector3f offset, Material *mt) {
     objl::Loader loader;
@@ -59,10 +69,7 @@ Intersection Triangle::finalize(const Ray &ray, float t, float u, float v) const
 }
 
 Intersection Triangle::getIntersection(Ray ray) {
-    // Thin wrapper: cheap test, then finalize the hit once. Kept for any caller
-    // that wants a full Intersection directly; the hot BVH loop calls hitTest()
-    // and finalize() separately so it only finalizes the closest triangle.
-    TriHit h = hitTest(ray);
+    TriangleHit h = hitTest(ray);
     if (!h.happened)
         return Intersection();
     return finalize(ray, h.t, h.u, h.v);

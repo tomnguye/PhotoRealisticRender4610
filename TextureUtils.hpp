@@ -19,120 +19,121 @@ struct Texture {
 
 namespace TextureUtils {
 
-inline void uvToTexel(float u, float v, int width, int height, int &x0, int &y0, int &x1, int &y1,
-                      float &fx, float &fy) {
-    u = u - std::floor(u);
-    v = v - std::floor(v);
+struct TexelQuad {
+    int x0, y0, x1, y1;
+    float fx, fy;
+};
 
-    float px = u * width;
-    float py = v * height;
+inline TexelQuad uvToTexelQuad(float u, float v, int width, int height) {
+    u -= std::floor(u);
+    v -= std::floor(v);
 
-    x0 = (int) px % width;
-    y0 = (int) py % height;
-    x1 = (x0 + 1) % width;
-    y1 = (y0 + 1) % height;
-    fx = px - std::floor(px);
-    fy = py - std::floor(py);
+    float pixelX = u * width;
+    float pixelY = v * height;
+
+    TexelQuad quad;
+    quad.x0 = (int) pixelX % width;
+    quad.y0 = (int) pixelY % height;
+    quad.x1 = (quad.x0 + 1) % width;
+    quad.y1 = (quad.y0 + 1) % height;
+    quad.fx = pixelX - std::floor(pixelX);
+    quad.fy = pixelY - std::floor(pixelY);
+    return quad;
 }
 
-inline Vector3f fetchRGB(const Texture &tex, int x, int y) {
-    assert(tex.channels >= 3);
-    int i = (y * tex.width + x) * tex.channels;
-    return Vector3f(tex.data[i] / 255.f, tex.data[i + 1] / 255.f, tex.data[i + 2] / 255.f);
-}
-
-inline float fetchChannel(const Texture &tex, int x, int y, int channel) {
-    assert(channel < tex.channels);
-    int i = (y * tex.width + x) * tex.channels;
-    return tex.data[i + channel] / 255.f;
-}
-
-inline float srgbToLinear(float x) {
-    x = std::max(0.f, x);
-    return x <= 0.04045f ? x / 12.92f : std::pow((x + 0.055f) / 1.055f, 2.4f);
-}
-
-inline Vector3f srgbToLinear(const Vector3f &c) {
-    return Vector3f(srgbToLinear(c.x), srgbToLinear(c.y), srgbToLinear(c.z));
-}
-
-inline Vector3f bilerp(const Vector3f &c00, const Vector3f &c10, const Vector3f &c01,
-                       const Vector3f &c11, float fx, float fy) {
-    Vector3f top = c00 + (c10 - c00) * fx;
-    Vector3f bottom = c01 + (c11 - c01) * fx;
+inline Vector3f bilinear(const Vector3f &topLeft, const Vector3f &topRight,
+                         const Vector3f &bottomLeft, const Vector3f &bottomRight, float fx,
+                         float fy) {
+    Vector3f top = topLeft + (topRight - topLeft) * fx;
+    Vector3f bottom = bottomLeft + (bottomRight - bottomLeft) * fx;
     return top + (bottom - top) * fy;
 }
 
-inline Vector2f bilerp2(const Vector2f &c00, const Vector2f &c10, const Vector2f &c01,
-                        const Vector2f &c11, float fx, float fy) {
-    auto lerp2 = [](Vector2f a, Vector2f b, float t) {
-        return Vector2f(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-    };
-    return lerp2(lerp2(c00, c10, fx), lerp2(c01, c11, fx), fy);
+inline Vector2f bilinear(const Vector2f &topLeft, const Vector2f &topRight,
+                         const Vector2f &bottomLeft, const Vector2f &bottomRight, float fx,
+                         float fy) {
+    Vector2f top(topLeft.x + (topRight.x - topLeft.x) * fx,
+                 topLeft.y + (topRight.y - topLeft.y) * fx);
+    Vector2f bottom(bottomLeft.x + (bottomRight.x - bottomLeft.x) * fx,
+                    bottomLeft.y + (bottomRight.y - bottomLeft.y) * fx);
+    return Vector2f(top.x + (bottom.x - top.x) * fy, top.y + (bottom.y - top.y) * fy);
 }
 
-inline Vector3f sampleBaseColor(const Texture &tex, const Vector2f &uv, const Vector3f &fallback) {
-    if (tex.empty())
+inline float srgbToLinear(float value) {
+    value = std::max(0.f, value);
+    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+inline Vector3f srgbToLinear(const Vector3f &color) {
+    return Vector3f(srgbToLinear(color.x), srgbToLinear(color.y), srgbToLinear(color.z));
+}
+
+inline Vector3f fetchRGB(const Texture &texture, int x, int y) {
+    assert(texture.channels >= 3);
+    int i = (y * texture.width + x) * texture.channels;
+    return Vector3f(texture.data[i] / 255.f, texture.data[i + 1] / 255.f,
+                    texture.data[i + 2] / 255.f);
+}
+
+inline Vector3f fetchNormal(const Texture &texture, int x, int y) {
+    int i = (y * texture.width + x) * texture.channels;
+    return Vector3f(texture.data[i] / 255.f * 2.f - 1.f, texture.data[i + 1] / 255.f * 2.f - 1.f,
+                    texture.data[i + 2] / 255.f * 2.f - 1.f);
+}
+
+inline Vector2f fetchMetallicRoughness(const Texture &texture, int x, int y) {
+    int i = (y * texture.width + x) * texture.channels;
+    return Vector2f(texture.data[i + 1] / 255.f,  // green = roughness
+                    texture.data[i + 2] / 255.f); // blue = metallic
+}
+
+inline Vector3f sampleBaseColor(const Texture &texture, const Vector2f &uv,
+                                const Vector3f &fallback) {
+    if (texture.empty())
         return fallback;
 
-    int x0, y0, x1, y1;
-    float fx, fy;
-    uvToTexel(uv.x, uv.y, tex.width, tex.height, x0, y0, x1, y1, fx, fy);
-
-    Vector3f c = bilerp(fetchRGB(tex, x0, y0), fetchRGB(tex, x1, y0), fetchRGB(tex, x0, y1),
-                        fetchRGB(tex, x1, y1), fx, fy);
-    return srgbToLinear(c);
+    TexelQuad quad = uvToTexelQuad(uv.x, uv.y, texture.width, texture.height);
+    Vector3f color = bilinear(
+        fetchRGB(texture, quad.x0, quad.y0), fetchRGB(texture, quad.x1, quad.y0),
+        fetchRGB(texture, quad.x0, quad.y1), fetchRGB(texture, quad.x1, quad.y1), quad.fx, quad.fy);
+    return srgbToLinear(color);
 }
 
-inline Vector3f sampleNormalMap(const Texture &tex, const Vector2f &uv) {
-    if (tex.empty())
+inline Vector3f sampleNormalMap(const Texture &texture, const Vector2f &uv) {
+    if (texture.empty())
         return Vector3f(0.f, 0.f, 1.f);
 
-    int x0, y0, x1, y1;
-    float fx, fy;
-    uvToTexel(uv.x, uv.y, tex.width, tex.height, x0, y0, x1, y1, fx, fy);
-
-    auto fetch = [&](int x, int y) -> Vector3f {
-        int i = (y * tex.width + x) * tex.channels;
-        return Vector3f(tex.data[i] / 255.f * 2.f - 1.f, tex.data[i + 1] / 255.f * 2.f - 1.f,
-                        tex.data[i + 2] / 255.f * 2.f - 1.f);
-    };
-
-    Vector3f n = bilerp(fetch(x0, y0), fetch(x1, y0), fetch(x0, y1), fetch(x1, y1), fx, fy);
-    return normalize(n);
+    TexelQuad quad = uvToTexelQuad(uv.x, uv.y, texture.width, texture.height);
+    Vector3f normal =
+        bilinear(fetchNormal(texture, quad.x0, quad.y0), fetchNormal(texture, quad.x1, quad.y0),
+                 fetchNormal(texture, quad.x0, quad.y1), fetchNormal(texture, quad.x1, quad.y1),
+                 quad.fx, quad.fy);
+    return normalize(normal);
 }
 
-inline Vector2f sampleMetallicRoughness(const Texture &tex, const Vector2f &uv,
+inline Vector2f sampleMetallicRoughness(const Texture &texture, const Vector2f &uv,
                                         float fallbackRoughness, float fallbackMetallic) {
-    if (tex.empty())
+    if (texture.empty())
         return Vector2f(fallbackRoughness, fallbackMetallic);
 
-    assert(tex.channels >= 3);
+    assert(texture.channels >= 3);
 
-    int x0, y0, x1, y1;
-    float fx, fy;
-    uvToTexel(uv.x, uv.y, tex.width, tex.height, x0, y0, x1, y1, fx, fy);
-
-    auto fetch = [&](int x, int y) -> Vector2f {
-        int i = (y * tex.width + x) * tex.channels;
-        return Vector2f(tex.data[i + 1] / 255.f,  // G = roughness
-                        tex.data[i + 2] / 255.f); // B = metallic
-    };
-
-    return bilerp2(fetch(x0, y0), fetch(x1, y0), fetch(x0, y1), fetch(x1, y1), fx, fy);
+    TexelQuad quad = uvToTexelQuad(uv.x, uv.y, texture.width, texture.height);
+    return bilinear(fetchMetallicRoughness(texture, quad.x0, quad.y0),
+                    fetchMetallicRoughness(texture, quad.x1, quad.y0),
+                    fetchMetallicRoughness(texture, quad.x0, quad.y1),
+                    fetchMetallicRoughness(texture, quad.x1, quad.y1), quad.fx, quad.fy);
 }
 
-inline Vector3f sampleEmissive(const Texture &tex, const Vector2f &uv, const Vector3f &factor) {
-    if (tex.empty())
+inline Vector3f sampleEmissive(const Texture &texture, const Vector2f &uv, const Vector3f &factor) {
+    if (texture.empty())
         return factor;
 
-    int x0, y0, x1, y1;
-    float fx, fy;
-    uvToTexel(uv.x, uv.y, tex.width, tex.height, x0, y0, x1, y1, fx, fy);
-
-    Vector3f c = bilerp(fetchRGB(tex, x0, y0), fetchRGB(tex, x1, y0), fetchRGB(tex, x0, y1),
-                        fetchRGB(tex, x1, y1), fx, fy);
-    return factor * srgbToLinear(c);
+    TexelQuad quad = uvToTexelQuad(uv.x, uv.y, texture.width, texture.height);
+    Vector3f color = bilinear(
+        fetchRGB(texture, quad.x0, quad.y0), fetchRGB(texture, quad.x1, quad.y0),
+        fetchRGB(texture, quad.x0, quad.y1), fetchRGB(texture, quad.x1, quad.y1), quad.fx, quad.fy);
+    return factor * srgbToLinear(color);
 }
 
 } // namespace TextureUtils

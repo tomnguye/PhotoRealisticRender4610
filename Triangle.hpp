@@ -5,9 +5,14 @@
 #include "Intersection.hpp"
 #include "Material.hpp"
 #include "Object.hpp"
-#include <array>
-#include <cassert>
-#include <cstring>
+#include "Ray.hpp"
+#include "Vector.hpp"
+#include "global.hpp"
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <utility>
 #include <vector>
 
 class Triangle : public Object {
@@ -17,7 +22,7 @@ class Triangle : public Object {
     Vector2f t0, t1, t2;       // per-vertex texture coords
     Vector3f tan0, tan1, tan2; // per-vertex tangents (xyz only)
     float tangentW0 = 1.f, tangentW1 = 1.f,
-          tangentW2 = 1.f; // glTF tangent handedness (w component)
+          tangentW2 = 1.f; // gltf tangent handedness (w component)
     bool hasTangents = false;
     Vector3f n0, n1, n2; // per-vertex smooth normals
     bool hasSmoothNormals = false;
@@ -33,17 +38,13 @@ class Triangle : public Object {
         area = crossProduct(e1, e2).norm() * 0.5f;
     }
 
-    // Cheap closest-hit query for the hot BVH loop: returns barycentrics + t
-    // with NO attribute interpolation and NO Intersection construction. The
-    // winning hit is turned into a full Intersection exactly once, after
-    // traversal, via finalize(). happened==false means miss.
-    struct TriHit {
+    struct TriangleHit {
         float t;
         float u, v;
         bool happened;
     };
 
-    inline TriHit hitTest(const Ray &ray) const {
+    inline TriangleHit hitTest(const Ray &ray) const {
         Vector3f P = crossProduct(ray.direction, e2);
         float PdotE1 = dotProduct(P, e1);
         if (fabs(PdotE1) < 1e-6f)
@@ -63,15 +64,10 @@ class Triangle : public Object {
         return {t, u, v, true};
     }
 
-    // Build the full Intersection for a hit produced by hitTest(). Called once
-    // per ray, on the closest triangle only.
     Intersection finalize(const Ray &ray, float t, float u, float v) const;
 
     Intersection getIntersection(Ray ray) override;
 
-    // Shadow-ray fast path: same Möller–Trumbore as getIntersection but
-    // returns only tnear. No normal/tangent/UV work at all. A hit beyond
-    // tMax is reported as a miss so callers can early-exit.
     float intersectT(const Ray &ray,
                      float tMax = std::numeric_limits<float>::infinity()) const override {
         Vector3f P = crossProduct(ray.direction, e2);
@@ -99,9 +95,6 @@ class Triangle : public Object {
         float x = std::sqrt(get_random_float()), y = get_random_float();
         float b0 = 1.0f - x, b1 = x * (1.0f - y), b2 = x * y;
         pos.coords = v0 * b0 + v1 * b1 + v2 * b2;
-        // Return the SMOOTH interpolated normal at the sampled point when vertex
-        // normals exist, matching finalize() so NEE and BSDF-hit agree on the
-        // emitter's normal. Falls back to the flat face normal otherwise.
         if (hasSmoothNormals)
             pos.normal = normalize(n0 * b0 + n1 * b1 + n2 * b2);
         else
@@ -141,10 +134,6 @@ class MeshTriangle : public Object {
         return inter;
     }
 
-    // Shadow fast path: use the sub-BVH's IntersectP, which exits on the first
-    // occluder within tMax and never builds a full Intersection record. Returns
-    // a sentinel positive distance on hit (the caller only checks the sign /
-    // the < tMax bound, which IntersectP has already enforced).
     float intersectT(const Ray &ray,
                      float tMax = std::numeric_limits<float>::infinity()) const override {
         if (!bvh)
