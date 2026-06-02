@@ -17,8 +17,11 @@ class Integrator {
   public:
     float directClamp = 0.f;
     float indirectClamp = 10.0f;
-    Integrator(const Scene &scene_, int maxDepth_, float rrThreshold_)
-        : scene(scene_), maxDepth(maxDepth_), rrThreshold(rrThreshold_) {}
+    bool shadowsEnabled = true;
+    Integrator(const Scene &scene_, int maxDepth_, float rrThreshold_, bool shadows_)
+        : scene(scene_), maxDepth(maxDepth_), rrThreshold(rrThreshold_),shadowsEnabled(shadows_) {
+          printf("[Integrator] shadowsEnabled=%d\n", (int)shadowsEnabled);
+        }
 
     Vector3f castRay(const Ray &ray) const;
 

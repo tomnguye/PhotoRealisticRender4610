@@ -27,8 +27,18 @@ LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector
 
     float pdfSolidAngle = lightPdfArea * dist2 / cosAtLight;
 
-    Ray shadowRay(hitPoint + N * EPSILON, wi);
-    bool visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
+    // attempt at shadow toggling
+    bool visible;
+    if (!shadowsEnabled) {
+        visible = true;
+    } else {
+        // intersectP is cheaper than intersect — returns on first hit.
+        // tMax set just short of the light to avoid self-intersection on it.
+        visible = !scene.intersectP(Ray(hitPoint + wi * EPSILON, wi), dist * (1.f - 1e-3f));
+    }
+
+    // Ray shadowRay(hitPoint + N * EPSILON, wi);
+    // bool visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
 
     return {lightSample.material->m_emission, wi, pdfSolidAngle, visible};
 }
@@ -50,16 +60,21 @@ LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vec
     float pdf;
     Vector3f sampleDir = scene.envMap.importanceSample(pdf);
 
+
     if (pdf < 1e-6f) {
         lightSample.visible = false;
         return lightSample;
     }
 
     // Offset along the surface normal, consistent with sampleDirectLight.
-    Ray shadowRay(hitPoint + N * EPSILON, sampleDir);
-    if (scene.intersectP(shadowRay)) {
-        lightSample.visible = false;
-        return lightSample;
+    // modifying in attempt to toggle shadows
+    if (shadowsEnabled){
+        Ray shadowRay(hitPoint + N * EPSILON, sampleDir);
+        if (scene.intersectP(shadowRay)) {
+            lightSample.visible = false;
+            return lightSample;
+        }
+
     }
 
     lightSample.dir = sampleDir;

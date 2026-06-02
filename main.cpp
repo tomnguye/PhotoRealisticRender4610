@@ -6,6 +6,7 @@
 #include "Vector.hpp"
 #include "global.hpp"
 #include "scenes/museum_final.cpp"
+// #include "scenes/museum_final_old.cpp"
 #include <chrono>
 
 int main(int argc, char **argv) {
@@ -20,14 +21,37 @@ int main(int argc, char **argv) {
     settings.exposure = 1.0f;
     settings.toneMapper = tonemap::ToneMapper::AgX;
 
-    Scene scene = buildScene();
+    settings.shadows = true;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg(argv[i]);
+        if (arg == "--no-shadows") {
+            settings.shadows = false;
+            fprintf(stderr, "[main] SHADOWS OFF\n");
+        }
+        else if (arg == "--light-brightness" && i + 1 < argc){
+            settings.lightBrightness = std::atof(argv[++i]);
+            fprintf(stderr, "[main] LIGHT BRIGHTNESS SET TO %f\n", settings.lightBrightness);
+
+        }
+        else if (arg == "--env-dark"){
+            settings.envMap = "dark";
+            fprintf(stderr, "[main] ENV MAP SET TO DARK\n");
+        }
+    }
+
+
+    Scene scene = buildScene(settings);
 
     // scene.camera.aperture = 0.003;
     scene.camera.init(settings.width, settings.height);
 
     scene.medium.sigma_t = -1;
 
-    Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
+    
+
+    // Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette);
+    Integrator integrator = Integrator(scene, settings.maxDepth, settings.russianRoulette, settings.shadows);
 
     auto start = std::chrono::system_clock::now();
 

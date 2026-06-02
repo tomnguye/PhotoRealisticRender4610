@@ -48,6 +48,9 @@ struct RenderSettings {
     int maxDepth = 30;
     float varianceThreshold = 0.05f;
     float exposure = 0.18f;
+    bool shadows = true;
+    float lightBrightness = 1000.f;
+    std::string envMap = "";
 
     // Tone mapping operator applied when forming the 8-bit output image.
     // See ToneMapping.hpp for the available operators.
