@@ -23,18 +23,13 @@ LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector
 
     float pdfSolidAngle = lightPdfArea * dist2 / cosAtLight;
 
-    // attempt at shadow toggling
     bool visible;
     if (!shadowsEnabled) {
         visible = true;
     } else {
-        // intersectP is cheaper than intersect — returns on first hit.
-        // tMax set just short of the light to avoid self-intersection on it.
-        visible = !scene.intersectP(Ray(hitPoint + wi * EPSILON, wi), dist * (1.f - 1e-3f));
+        Ray shadowRay(hitPoint + N * EPSILON, wi);
+        visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
     }
-
-    // Ray shadowRay(hitPoint + N * EPSILON, wi);
-    // bool visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
 
     return {lightSample.material->m_emission, wi, pdfSolidAngle, visible};
 }

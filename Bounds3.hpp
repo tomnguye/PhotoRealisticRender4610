@@ -84,17 +84,14 @@ class Bounds3 {
 
 inline bool Bounds3::IntersectP(const Ray &ray, const Vector3f &invDir,
                                 const std::array<int, 3> &dirIsNeg) const {
-    // invDir: ray direction(x,y,z), invDir=(1.0/x,1.0/y,1.0/z), use this because Multiply is faster
-    // that Division dirIsNeg: ray direction(x,y,z), dirIsNeg=[int(x>0),int(y>0),int(z>0)], use this
-    // to simplify your logic
+
     float tEnter = FLT_MIN;
     float tExit = FLT_MAX;
     for (int i = 0; i < 3; i++) {
         float t_min = (pMin[i] - ray.origin[i]) * invDir[i];
         float t_max = (pMax[i] - ray.origin[i]) * invDir[i];
         if (dirIsNeg[i] == 0)
-            std::swap(t_min,
-                      t_max); // note: here must be ==0, because dirIsNeg is actually int(x>0)
+            std::swap(t_min, t_max);
         tEnter = std::max(t_min, tEnter);
         tExit = std::min(t_max, tExit);
     }
