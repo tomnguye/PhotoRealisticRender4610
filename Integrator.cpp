@@ -1,16 +1,12 @@
 #include "Integrator.hpp"
-#include "Volume.hpp"
-#include <queue>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include "Intersection.hpp"
+#include "Material.hpp"
 #include "Ray.hpp"
+#include "Vector.hpp"
+#include "global.hpp"
+#include <algorithm>
+#include <cmath>
 
-/**
- * @brief Direct samples a light in the scene.
- */
 LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector3f &N) const {
     Intersection lightSample;
     float lightPdfArea;
@@ -27,28 +23,19 @@ LightSample Integrator::sampleDirectLight(const Vector3f &hitPoint, const Vector
 
     float pdfSolidAngle = lightPdfArea * dist2 / cosAtLight;
 
-    // attempt at shadow toggling
     bool visible;
     if (!shadowsEnabled) {
         visible = true;
     } else {
-        // intersectP is cheaper than intersect — returns on first hit.
-        // tMax set just short of the light to avoid self-intersection on it.
-        visible = !scene.intersectP(Ray(hitPoint + wi * EPSILON, wi), dist * (1.f - 1e-3f));
+        Ray shadowRay(hitPoint + N * EPSILON, wi);
+        visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
     }
-
-    // Ray shadowRay(hitPoint + N * EPSILON, wi);
-    // bool visible = !scene.intersectP(shadowRay, dist - 2.f * EPSILON);
 
     return {lightSample.material->m_emission, wi, pdfSolidAngle, visible};
 }
 
 /**
  * @brief Direct samples light coming from the environment map.
- *
- * The shadow ray origin is offset along the surface normal N (not along the
- * sampled direction) so that grazing samples are still lifted clear of the
- * surface and do not self-intersect.
  */
 LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vector3f &N) const {
     LightSample lightSample;
@@ -60,21 +47,17 @@ LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vec
     float pdf;
     Vector3f sampleDir = scene.envMap.importanceSample(pdf);
 
-
     if (pdf < 1e-6f) {
         lightSample.visible = false;
         return lightSample;
     }
 
-    // Offset along the surface normal, consistent with sampleDirectLight.
-    // modifying in attempt to toggle shadows
-    if (shadowsEnabled){
+    if (shadowsEnabled) {
         Ray shadowRay(hitPoint + N * EPSILON, sampleDir);
         if (scene.intersectP(shadowRay)) {
             lightSample.visible = false;
             return lightSample;
         }
-
     }
 
     lightSample.dir = sampleDir;
@@ -88,12 +71,6 @@ LightSample Integrator::sampleEnvironmentMap(const Vector3f &hitPoint, const Vec
 /**
  * @brief Evaluates how much a direct light sample contributes to the render.
  * Includes multiple importance sampling.
- *
- * eval() returns f(wi,wo)*NdotWi already, so we do NOT multiply cosine here.
- * The BRDF pdf used for the MIS weight is the full mixed pdf (LOBE_ALL), which
- * is exactly the same density the BSDF-sampling strategy reports for this
- * direction. This is the condition for the two strategies' weights to partition
- * to 1.
  */
 Vector3f Integrator::evalLightSample(const LightSample &light, const Vector3f &wo,
                                      const ShadingData &sd, Material *mat) const {
@@ -135,8 +112,6 @@ Vector3f Integrator::castRay(const Ray &ray) const {
     Ray currentRay = ray;
     bool specularBounce = false;
 
-    // Intersection for the current ray. Computed once per bounce and reused.
-    // Primed with the camera ray's intersection before the loop.
     Intersection inter = scene.intersect(currentRay);
 
     for (int bounce = 0; bounce < maxDepth; bounce++) {
@@ -148,9 +123,6 @@ Vector3f Integrator::castRay(const Ray &ray) const {
                 Vector3f contrib = beta * bg;
                 L += (bounce > 0) ? clampIndirect(contrib) : contrib;
             } else if (inter.material->isEmissive()) {
-                // One-sided emission: only the front face (the side the geometric
-                // normal points out of) emits. A ray striking the back face sees
-                // no emission, matching Blender's default emission shader.
                 bool frontFace = dotProduct(-currentRay.direction, inter.normal.normalized()) > 0.f;
                 if (frontFace) {
                     Vector3f contrib = beta * inter.material->m_emission;
@@ -172,21 +144,19 @@ Vector3f Integrator::castRay(const Ray &ray) const {
                                                                       inter.tangentHandedness)
                                               : mat->buildShadingData(inter.tcoords, geoNormal);
 
-            BSDFSample bsdf = mat->sample(-currentRay.direction, sd);
-            if (bsdf.pdf < 1e-6f)
+            BRDFSample brdf = mat->sample(-currentRay.direction, sd);
+            if (brdf.pdf < 1e-6f)
                 break;
 
-            beta = beta * bsdf.f / bsdf.pdf;
+            beta = beta * brdf.f / brdf.pdf;
 
-            bool isTransmission = dotProduct(bsdf.wi, geoNormal) < 0.f;
+            bool isTransmission = dotProduct(brdf.wi, geoNormal) < 0.f;
             Vector3f offset = isTransmission ? -geoNormal : geoNormal;
 
-            currentRay = Ray(hitPoint + offset * EPSILON, bsdf.wi);
+            currentRay = Ray(hitPoint + offset * EPSILON, brdf.wi);
             inter = scene.intersect(currentRay);
 
             if (isTransmission) {
-                // Beer-Lambert absorption could use inter distance here; current
-                // behaviour multiplies by baseColor tint.
                 beta = beta * sd.baseColor;
             }
 
@@ -209,42 +179,35 @@ Vector3f Integrator::castRay(const Ray &ray) const {
             Vector3f wo = -currentRay.direction;
             bool isIndirect = (bounce > 0);
 
-            // --- Direct light sampling (NEE). ---
+            // Direct lights
             if (scene.totalEmitArea > 0.f) {
                 LightSample light = sampleDirectLight(hitPoint, sd.N);
                 Vector3f contrib = beta * evalLightSample(light, wo, sd, dm);
                 L += isIndirect ? clampIndirect(contrib) : contrib;
             }
 
-            // --- Environment light sampling (NEE). ---
+            // Direct env map
             if (!scene.envMap.empty()) {
                 LightSample envSample = sampleEnvironmentMap(hitPoint, sd.N);
                 Vector3f contrib = beta * evalEnvironmentSample(envSample, wo, sd, dm);
                 L += isIndirect ? clampIndirect(contrib) : contrib;
             }
 
-            // --- BSDF sampling. ---
-            // sample() now follows the PBRT convention: bsdf.f and bsdf.pdf are
-            // the FULL mixed-lobe BSDF value and density at bsdf.wi, regardless
-            // of which lobe was internally chosen to generate the direction.
-            // So the SAME (f, pdf) pair is used for the throughput estimator
-            // (f/pdf) AND for the MIS weight (mis(pdf, lightPdf)). No separate
-            // all-lobe recomputation is needed.
-            BSDFSample bsdf = dm->sample(wo, sd);
-            if (bsdf.pdf < 1e-6f)
+            BRDFSample brdf = dm->sample(wo, sd);
+            if (brdf.pdf < 1e-6f)
                 break;
 
-            Vector3f betaScale = bsdf.f / bsdf.pdf;
+            Vector3f betaScale = brdf.f / brdf.pdf;
 
-            Vector3f offset = dotProduct(bsdf.wi, sd.N) >= 0.f ? sd.N : -sd.N;
-            currentRay = Ray(hitPoint + offset * EPSILON, bsdf.wi);
+            Vector3f offset = dotProduct(brdf.wi, sd.N) >= 0.f ? sd.N : -sd.N;
+            currentRay = Ray(hitPoint + offset * EPSILON, brdf.wi);
             inter = scene.intersect(currentRay);
 
             if (!inter.happened) {
                 if (!scene.envMap.empty()) {
-                    Vector3f envL = scene.envMap.sample(bsdf.wi);
-                    float envPdf = scene.envMap.importanceSamplePdf(bsdf.wi);
-                    float wBrdf = mis(bsdf.pdf, envPdf);
+                    Vector3f envL = scene.envMap.sample(brdf.wi);
+                    float envPdf = scene.envMap.importanceSamplePdf(brdf.wi);
+                    float wBrdf = mis(brdf.pdf, envPdf);
                     Vector3f c = beta * betaScale * wBrdf * envL;
                     L += isIndirect ? clampIndirect(c) : c;
                 } else {
@@ -255,17 +218,14 @@ Vector3f Integrator::castRay(const Ray &ray) const {
             }
 
             if (inter.material->isEmissive()) {
-                float cosThetaLight = dotProduct(-bsdf.wi, inter.normal.normalized());
-                // One-sided emission: a BSDF ray hitting the back face of the
-                // emitter sees no emission. cosThetaLight <= 0 means the hit is
-                // on the back face (or edge-on), so add nothing and stop.
+                float cosThetaLight = dotProduct(-brdf.wi, inter.normal.normalized());
                 if (cosThetaLight <= 0.f)
                     break;
                 Vector3f d = inter.coords - hitPoint;
                 float hitDist2 = dotProduct(d, d);
                 float lightPdfArea = scene.pdfLight(inter);
                 float lightPdfSA = lightPdfArea * hitDist2 / std::max(cosThetaLight, 1e-4f);
-                float wBrdf = mis(bsdf.pdf, lightPdfSA);
+                float wBrdf = mis(brdf.pdf, lightPdfSA);
                 Vector3f c = beta * betaScale * wBrdf * inter.material->m_emission;
                 L += isIndirect ? clampIndirect(c) : c;
                 break;
@@ -277,6 +237,7 @@ Vector3f Integrator::castRay(const Ray &ray) const {
                 break;
         }
 
+        // russian roulette
         if (bounce >= 3) {
             float maxComp = std::max({beta.x, beta.y, beta.z});
             float q = std::max(0.05f, 1.f - maxComp);

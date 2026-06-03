@@ -1,47 +1,18 @@
 #pragma once
-
-// =============================================================================
-//  ToneMapping.hpp
-//
-//  Display transforms ("tone mappers") for converting scene-referred linear
-//  radiance into display-referred, sRGB-encoded values ready for an 8-bit
-//  buffer.
-//
-//  DESIGN
-//  ------
-//  Each operator takes a linear, scene-referred Vector3f (channels may exceed
-//  1.0) and returns a display-encoded Vector3f in [0, 1]. The returned values
-//  are written DIRECTLY to the 8-bit framebuffer -- callers must NOT apply any
-//  further gamma / sRGB encode afterwards. Each operator owns its complete
-//  encode chain.
-//
-//  Adding a new operator: add an enum entry, write a static function, add one
-//  case to apply(). Nothing else changes.
-// =============================================================================
-
-#include "Vector.hpp" // Vector3f
+#include "Vector.hpp"
 #include <algorithm>
 #include <cmath>
 #include <string>
 
 namespace tonemap {
 
-// -----------------------------------------------------------------------------
-//  Operator selection
-// -----------------------------------------------------------------------------
 enum class ToneMapper {
-    Raw,        // No transform at all. Scene-linear written straight out (clamped).
-    Standard,   // sRGB OETF only, no tone curve (Blender's "Standard" view).
-    AgX,        // AgX display transform (Godot / EaryChow config) + sRGB OETF.
-    PBRNeutral, // Khronos PBR Neutral tone mapper + sRGB OETF.
+    Raw,
+    Standard,
+    AgX,
+    PBRNeutral,
 };
 
-// -----------------------------------------------------------------------------
-//  Shared helpers
-// -----------------------------------------------------------------------------
-
-// Piecewise sRGB OETF (linear -> sRGB signal). Input clamped to [0, 1].
-// Ported from Godot's linear_to_srgb().
 inline float srgbOETF(float x) {
     x = std::clamp(x, 0.f, 1.f);
     return x < 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.f / 2.4f) - 0.055f;
@@ -51,7 +22,6 @@ inline Vector3f srgbOETF(Vector3f c) {
     return Vector3f(srgbOETF(c.x), srgbOETF(c.y), srgbOETF(c.z));
 }
 
-// 3x3 matrix * column vector (result = M * v).
 inline Vector3f mat3Mul(const float m[3][3], Vector3f v) {
     return Vector3f(m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z,
                     m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z,
@@ -63,26 +33,10 @@ inline Vector3f clamp01(Vector3f c) {
                     std::clamp(c.z, 0.f, 1.f));
 }
 
-// -----------------------------------------------------------------------------
-//  Raw: no transform whatsoever.
-//
-//  Scene-linear radiance written straight to the buffer (only clamped to the
-//  representable [0,1] range). This matches Blender's "Raw" view transform: it
-//  applies NO display encode, so it looks dark on an sRGB monitor. It is a
-//  diagnostic / data passthrough, not a viewable image.
-// -----------------------------------------------------------------------------
 inline Vector3f raw(Vector3f linear) {
     return clamp01(linear);
 }
 
-// -----------------------------------------------------------------------------
-//  Standard: sRGB display encode, no tone curve.
-//
-//  Linear -> sRGB OETF, with highlights above 1.0 hard-clipping. This is
-//  Blender's "Standard" view transform and the honest baseline for isolating
-//  what a *tone curve* (like AgX) adds: the encode is the same, only the curve
-//  differs.
-// -----------------------------------------------------------------------------
 inline Vector3f standard(Vector3f linear) {
     return srgbOETF(linear); // srgbOETF clamps internally
 }

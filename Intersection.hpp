@@ -23,7 +23,7 @@ struct Intersection {
     }
     bool happened;
     Vector3f coords;
-    Vector2f tcoords; // interpolated UVs (not raw barycentric)
+    Vector2f tcoords;
     Vector3f normal;
     Vector3f tangent;        // interpolated tangent for normal mapping
     float tangentHandedness; // gltf w component  +1 or -1, for bitangent sign

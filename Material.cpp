@@ -1,4 +1,10 @@
 #include "Material.hpp"
+#include "BRDFUtils.hpp"
+#include "TextureUtils.hpp"
+#include "Vector.hpp"
+#include "global.hpp"
+#include <algorithm>
+#include <cmath>
 
 ShadingData Material::buildShadingData(const Vector2f &uv, const Vector3f &Ng, const Vector3f &T,
                                        const Vector3f &B) const {
@@ -25,7 +31,7 @@ ShadingData Material::buildShadingData(const Vector2f &uv, const Vector3f &Ng, c
     return sd;
 }
 
-BSDFSample DiffuseMaterial::sample(const Vector3f &wo, const ShadingData &sd) const {
+BRDFSample DiffuseMaterial::sample(const Vector3f &wo, const ShadingData &sd) const {
     float alpha = sd.roughness * sd.roughness;
     Vector3f F0 = computeF0(sd.metallic, sd.baseColor);
     float F0max = std::max({F0.x, F0.y, F0.z});
@@ -43,14 +49,14 @@ BSDFSample DiffuseMaterial::sample(const Vector3f &wo, const ShadingData &sd) co
     LobeType lobe;
 
     if (u0 < specWeight) {
-        // Specular: sample VNDF
+        // specular
         Vector3f H = sampleGGX_VNDF(woLocal, alpha, u1, u2);
         if (dotProduct(H, H) < 1e-8f)
             return {};
         wiLocal = reflect(woLocal, H);
         lobe = LOBE_SPECULAR;
     } else {
-        // Diffuse: sample cosine hemisphere in local space directly
+        // diffuse
         float r = std::sqrt(u1);
         float phi = 2.f * M_PI * u2;
         wiLocal =
@@ -63,15 +69,9 @@ BSDFSample DiffuseMaterial::sample(const Vector3f &wo, const ShadingData &sd) co
 
     Vector3f wi = toWorld(wiLocal, sd.N);
 
-    // PBRT convention: regardless of which lobe was chosen to GENERATE the
-    // direction, the returned f and pdf describe the FULL BSDF at wi. The lobe
-    // choice only steers where wi lands; it never restricts which terms appear
-    // in f or pdf. This keeps the throughput estimator (f/pdf) and any MIS
-    // weight (computed against pdf) defined over the SAME density, which is the
-    // condition for an unbiased mixed-lobe estimator.
-    BSDFSample s;
+    BRDFSample s;
     s.wi = wi;
-    s.lobe = lobe; // recorded for information only; eval/pdf below use LOBE_ALL
+    s.lobe = lobe;
     s.pdf = pdf(wi, wo, sd, LOBE_ALL);
     s.f = (s.pdf > 1e-6f) ? eval(wi, wo, sd, LOBE_ALL) : Vector3f(0.f);
     return s;
@@ -111,7 +111,6 @@ Vector3f DiffuseMaterial::eval(const Vector3f &wi, const Vector3f &wo, const Sha
         Vector3f kD = (Vector3f(1.f) - F) * (1.f - sd.metallic);
         return kD * sd.baseColor / M_PI * NdotWi;
     } else {
-        // LOBE_ALL: evaluate both lobes combined.
         float D = D_GGX(NdotH, alpha);
         float G = G_SmithHeightCorrelated(NdotWo, NdotWi, alpha);
         float denom = 4.f * std::max(NdotWo, 1e-4f) * std::max(NdotWi, 1e-4f);
@@ -153,12 +152,11 @@ float DiffuseMaterial::pdf(const Vector3f &wi, const Vector3f &wo, const Shading
     else if (lobe == LOBE_DIFFUSE)
         return (1.f - specWeight) * pd;
     else
-        // LOBE_ALL: full mixed pdf (used for direct light MIS weight)
         return specWeight * ps + (1.f - specWeight) * pd;
 }
 
-BSDFSample MirrorMaterial::sample(const Vector3f &wo, const ShadingData &sd) const {
-    BSDFSample result;
+BRDFSample MirrorMaterial::sample(const Vector3f &wo, const ShadingData &sd) const {
+    BRDFSample result;
     result.wi = normalize(reflect(wo, sd.N));
     result.f = baseColor;
     result.pdf = 1.0f;
@@ -166,8 +164,8 @@ BSDFSample MirrorMaterial::sample(const Vector3f &wo, const ShadingData &sd) con
     return result;
 }
 
-BSDFSample GlassMaterial::sample(const Vector3f &wo, const ShadingData &sd) const {
-    BSDFSample result;
+BRDFSample GlassMaterial::sample(const Vector3f &wo, const ShadingData &sd) const {
+    BRDFSample result;
     result.pdf = 1.0f;
     result.lobe = LOBE_DELTA;
 
@@ -184,7 +182,7 @@ BSDFSample GlassMaterial::sample(const Vector3f &wo, const ShadingData &sd) cons
         result.f = Vector3f(1.0f);
     } else {
         result.wi = normalize(refracted);
-        result.f = Vector3f(eta * eta); // non-reciprocal eta^2 correction
+        result.f = Vector3f(eta * eta);
     }
 
     return result;

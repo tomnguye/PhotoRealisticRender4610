@@ -2,27 +2,21 @@
 
 #include "Vector.hpp"
 #include "global.hpp"
+#include "stb_image.h"
+#include <algorithm>
 #include <cmath>
-#include <numeric>
+#include <cstdio>
 #include <string>
 #include <vector>
 
-#include "stb_image.h"
-
-// Equirectangular HDR environment map with 2D importance sampling.
-// A 2D CDF over pixel luminance is built at load time. At sample time the
-// marginal CDF selects a row and the conditional CDF selects a column within
-// that row. This concentrates samples on bright regions and avoids wasting
-// them on dark sky.
-
 struct EnvMap {
-    std::vector<Vector3f> pixels; // Linear HDR pixels, row-major.
+    std::vector<Vector3f> pixels;
     int width = 0;
     int height = 0;
     float totalLuminance = 0.f;
 
-    std::vector<float> cdf;         // Conditional CDF per row, flattened to width * height.
-    std::vector<float> marginalCdf; // CDF over row averages, length = height.
+    std::vector<float> cdf;         // Conditional CDF per row.
+    std::vector<float> marginalCdf; // CDF over row averages.
 
     bool loaded = false;
 

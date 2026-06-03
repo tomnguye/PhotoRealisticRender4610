@@ -1,17 +1,19 @@
 #include "Renderer.hpp"
 #include "Integrator.hpp"
-#include "Material.hpp"
+#include "Ray.hpp"
 #include "Scene.hpp"
 #include "ToneMapping.hpp"
+#include "Vector.hpp"
+#include "global.hpp"
 #include "stb_image_write.h"
+#include <algorithm>
 #include <atomic>
-#include <fstream>
-#include <sstream>
+#include <cmath>
+#include <cstdio>
+#include <iostream>
 #include <string>
 #include <vector>
-
 #ifdef _OPENMP
-#include <omp.h>
 #endif
 
 struct Tile {
@@ -59,7 +61,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
 
     std::atomic<int> tilesDone(0);
 
-    // We use tile based sampling to help distribute compute across threads.
 #pragma omp parallel for schedule(dynamic)
     for (int tileIdx = 0; tileIdx < totalTiles; tileIdx++) {
         const Tile &tile = tiles[tileIdx];
@@ -109,7 +110,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     }
     UpdateProgress(1.f);
 
-    // Adaptive sampling statistics.
     int totalSamples = 0;
     int minS = maxSamples, maxS = 0;
     for (int s : sampleCount) {
@@ -136,16 +136,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
     printf("Avg radiance: (%.4f, %.4f, %.4f)\n", avgR, avgG, avgB);
     printf("Max radiance: (%.4f, %.4f, %.4f)\n", maxR, maxG, maxB);
 
-    // -------------------------------------------------------------------------
-    // Tone mapping + output.
-    //
-    // The selected operator is written to output.{png,ppm}. In addition, unless
-    // the selected operator is already Raw, a true-Raw image (scene-linear, no
-    // display transform) is written alongside it (suffixed "_raw"). Note Raw is
-    // a diagnostic passthrough and will look dark on a normal display.
-    // -------------------------------------------------------------------------
-
-    // Apply exposure (in linear) and sanitise a single pixel's radiance.
     auto exposeLinear = [&](int i) -> Vector3f {
         Vector3f c = framebuffer[i] * exposure;
         if (!std::isfinite(c.x))
@@ -160,8 +150,6 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
         return c;
     };
 
-    // Tone map the whole framebuffer with a given operator into an 8-bit buffer,
-    // then write it as both PNG and PPM under the given base filename.
     auto renderAndWrite = [&](tonemap::ToneMapper mapper, const std::string &baseName) {
         std::vector<unsigned char> buf(totalPixels * 3);
         for (int i = 0; i < totalPixels; i++) {
@@ -184,16 +172,11 @@ void Renderer::Render(const Scene &scene, const Integrator &integrator,
         stbi_write_png(pngName.c_str(), W, H, 3, buf.data(), W * 3);
     };
 
-    // Primary output: the selected operator.
     renderAndWrite(settings.toneMapper, "output");
 
-    // Companion Raw baseline, unless the selection is already Raw.
     if (settings.toneMapper != tonemap::ToneMapper::Raw)
         renderAndWrite(tonemap::ToneMapper::Raw, "output_raw");
 
-    // -------------------------------------------------------------------------
-    // Adaptive sampling visualisation
-    // -------------------------------------------------------------------------
     std::vector<unsigned char> sampleBuffer(totalPixels * 3);
     for (int i = 0; i < totalPixels; i++) {
         unsigned char v = (unsigned char) (255 * (float) sampleCount[i] / (float) maxSamples);

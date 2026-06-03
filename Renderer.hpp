@@ -6,6 +6,9 @@
 #include "Integrator.hpp"
 #include "Scene.hpp"
 #include "ToneMapping.hpp"
+#include <cmath>
+#include <cstdlib>
+#include <string>
 
 /**
  * @brief Welford online variance tracker.
@@ -51,9 +54,6 @@ struct RenderSettings {
     bool shadows = true;
     float lightBrightness = 1000.f;
     std::string envMap = "";
-
-    // Tone mapping operator applied when forming the 8-bit output image.
-    // See ToneMapping.hpp for the available operators.
     tonemap::ToneMapper toneMapper = tonemap::ToneMapper::AgX;
 };
 

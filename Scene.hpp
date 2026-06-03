@@ -3,13 +3,12 @@
 #include "BVH.hpp"
 #include "Camera.hpp"
 #include "EnvMap.hpp"
-#include "Material.hpp"
+#include "Intersection.hpp"
 #include "Object.hpp"
 #include "Photon.hpp"
-#include "PointLight.hpp"
 #include "Ray.hpp"
 #include "Vector.hpp"
-#include "Volume.hpp"
+#include <limits>
 #include <vector>
 
 class Scene {
@@ -22,7 +21,6 @@ class Scene {
     Camera camera;
     float totalEmitArea = 0.f;
     PhotonMap photon_map;
-    Medium medium;
 
     void Add(Object *object) {
         objects.push_back(object);
