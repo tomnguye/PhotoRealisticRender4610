@@ -4,7 +4,7 @@
 #include "Vector.hpp"
 #include <Camera.hpp>
 
-static Scene buildScene() {
+static Scene buildScene(const RenderSettings &settings) {
 
     // Cameras
     auto rexCamera =
@@ -38,8 +38,13 @@ static Scene buildScene() {
     Scene scene;
     scene.camera = rexCamera;
 
-    // scene.envMap.load("../assets/hdri/lonely_road_afternoon_puresky_8k.hdr");
-    scene.envMap.load("../assets/hdri/kloppenheim_02_puresky_4k.hdr");
+    if (settings.envMap == "dark"){
+        scene.envMap.load("../assets/hdri/kloppenheim_02_puresky_4k.hdr");
+        fprintf(stderr, "[Scene] Using dark environment map: kloppenheim_02_puresky_4k.hdr\n");
+    }else{
+        scene.envMap.load("../assets/hdri/lonely_road_afternoon_puresky_8k.hdr");
+        fprintf(stderr, "[Scene] Using bright environment map: lonely_road_afternoon_puresky_8k.hdr\n");
+    }
 
     // Meshes
     // amber_exhibit
@@ -126,17 +131,17 @@ static Scene buildScene() {
     }
     for (auto *mesh :
          GLTFLoader::load("../assets/museum_final/spotlight_light.glb", MaterialType::Emit)) {
-        mesh->m->m_emission = 1000 * Vector3f(0.369f, 0.0f, 1.0f);
+        mesh->m->m_emission = settings.lightBrightness * Vector3f(0.369f, 0.0f, 1.0f);
         scene.Add(mesh);
     }
     for (auto *mesh :
          GLTFLoader::load("../assets/museum_final/spotlight_light_001.glb", MaterialType::Emit)) {
-        mesh->m->m_emission = 1000 * Vector3f(0.0f, 0.0f, 1.0f);
+        mesh->m->m_emission = settings.lightBrightness * Vector3f(0.0f, 0.0f, 1.0f);
         scene.Add(mesh);
     }
     for (auto *mesh :
          GLTFLoader::load("../assets/museum_final/spotlight_light_002.glb", MaterialType::Emit)) {
-        mesh->m->m_emission = 1000 * Vector3f(0.0f, 1.0f, 0.0f);
+        mesh->m->m_emission = settings.lightBrightness * Vector3f(0.0f, 1.0f, 0.0f);
         scene.Add(mesh);
     }
 
